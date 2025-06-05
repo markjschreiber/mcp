@@ -14,33 +14,69 @@
 
 """awslabs aws-healthomics MCP Server implementation."""
 
+from awslabs.aws_healthomics_mcp_server.tools.helper_tools import (
+    generate_parameter_template,
+    package_workflow,
+    validate_workflow,
+)
+from awslabs.aws_healthomics_mcp_server.tools.troubleshooting import diagnose_run_failure
+from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import (
+    analyze_run,
+    get_run_logs,
+)
+from awslabs.aws_healthomics_mcp_server.tools.workflow_execution import (
+    get_run,
+    get_run_task,
+    list_run_tasks,
+    list_runs,
+    start_run,
+)
+from awslabs.aws_healthomics_mcp_server.tools.workflow_management import (
+    create_workflow,
+    create_workflow_version,
+    get_workflow,
+    list_workflow_versions,
+    list_workflows,
+)
 from loguru import logger
 from mcp.server.fastmcp import FastMCP
 
 
 mcp = FastMCP(
     'awslabs.aws-healthomics-mcp-server',
-    instructions='Instructions for using this aws-healthomics MCP server. This can be used by clients to improve the LLM'
-    's understanding of available tools, resources, etc. for the AWS HealthOmics service',
+    instructions='AWS HealthOmics MCP server provides tools for creating, managing, and analyzing genomic workflows using AWS HealthOmics. It enables AI assistants to help users with workflow creation, execution, monitoring, and troubleshooting.',
     dependencies=[
+        'boto3',
         'pydantic',
         'loguru',
     ],
 )
 
+# Register workflow management tools
+mcp.tool(name='ListWorkflows')(list_workflows)
+mcp.tool(name='CreateWorkflow')(create_workflow)
+mcp.tool(name='GetWorkflow')(get_workflow)
+mcp.tool(name='CreateWorkflowVersion')(create_workflow_version)
+mcp.tool(name='ListWorkflowVersions')(list_workflow_versions)
 
-@mcp.tool(name='ExampleTool')
-async def example_tool(
-    query: str,
-) -> str:
-    """Example tool implementation.
+# Register workflow execution tools
+mcp.tool(name='StartRun')(start_run)
+mcp.tool(name='ListRuns')(list_runs)
+mcp.tool(name='GetRun')(get_run)
+mcp.tool(name='ListRunTasks')(list_run_tasks)
+mcp.tool(name='GetRunTask')(get_run_task)
 
-    Replace this with your own tool implementation.
-    """
-    project_name = 'awslabs aws-healthomics MCP Server'
-    return (
-        f"Hello from {project_name}! Your query was {query}. Replace this with your tool's logic"
-    )
+# Register workflow analysis tools
+mcp.tool(name='AnalyzeRun')(analyze_run)
+mcp.tool(name='GetRunLogs')(get_run_logs)
+
+# Register troubleshooting tools
+mcp.tool(name='DiagnoseRunFailure')(diagnose_run_failure)
+
+# Register helper tools
+mcp.tool(name='PackageWorkflow')(package_workflow)
+mcp.tool(name='ValidateWorkflow')(validate_workflow)
+mcp.tool(name='GenerateParameterTemplate')(generate_parameter_template)
 
 
 def main():

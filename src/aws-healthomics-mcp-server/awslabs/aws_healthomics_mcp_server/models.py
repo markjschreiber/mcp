@@ -13,3 +13,163 @@
 # limitations under the License.
 
 """Defines data models, Pydantic models, and validation logic."""
+
+from awslabs.aws_healthomics_mcp_server.consts import (
+    ERROR_STATIC_STORAGE_REQUIRES_CAPACITY,
+    STORAGE_TYPE_STATIC,
+)
+from datetime import datetime
+from enum import Enum
+from pydantic import BaseModel, validator
+from typing import List, Optional
+
+
+class WorkflowType(str, Enum):
+    """Enum for workflow types."""
+
+    WDL = 'WDL'
+    NEXTFLOW = 'NEXTFLOW'
+    CWL = 'CWL'
+
+
+class StorageType(str, Enum):
+    """Enum for storage types."""
+
+    STATIC = 'STATIC'
+    DYNAMIC = 'DYNAMIC'
+
+
+class CacheBehavior(str, Enum):
+    """Enum for cache behaviors."""
+
+    CACHE_ALWAYS = 'CACHE_ALWAYS'
+    CACHE_ON_FAILURE = 'CACHE_ON_FAILURE'
+
+
+class RunStatus(str, Enum):
+    """Enum for run statuses."""
+
+    PENDING = 'PENDING'
+    STARTING = 'STARTING'
+    RUNNING = 'RUNNING'
+    COMPLETED = 'COMPLETED'
+    FAILED = 'FAILED'
+    CANCELLED = 'CANCELLED'
+
+
+class ExportType(str, Enum):
+    """Enum for export types."""
+
+    DEFINITION = 'DEFINITION'
+    PARAMETER_TEMPLATE = 'PARAMETER_TEMPLATE'
+
+
+class WorkflowSummary(BaseModel):
+    """Summary information about a workflow."""
+
+    id: str
+    arn: str
+    name: str
+    status: str
+    type: str
+    creationTime: datetime
+
+
+class WorkflowListResponse(BaseModel):
+    """Response model for listing workflows."""
+
+    workflows: List[WorkflowSummary]
+    nextToken: Optional[str] = None
+
+
+class RunSummary(BaseModel):
+    """Summary information about a run."""
+
+    id: str
+    arn: str
+    name: str
+    status: str
+    workflowId: str
+    workflowType: str
+    creationTime: datetime
+    startTime: Optional[datetime] = None
+    stopTime: Optional[datetime] = None
+
+
+class RunListResponse(BaseModel):
+    """Response model for listing runs."""
+
+    runs: List[RunSummary]
+    nextToken: Optional[str] = None
+
+
+class TaskSummary(BaseModel):
+    """Summary information about a task."""
+
+    taskId: str
+    status: str
+    name: str
+    cpus: int
+    memory: int
+    startTime: Optional[datetime] = None
+    stopTime: Optional[datetime] = None
+
+
+class TaskListResponse(BaseModel):
+    """Response model for listing tasks."""
+
+    tasks: List[TaskSummary]
+    nextToken: Optional[str] = None
+
+
+class LogEvent(BaseModel):
+    """Log event model."""
+
+    timestamp: datetime
+    message: str
+
+
+class LogResponse(BaseModel):
+    """Response model for retrieving logs."""
+
+    events: List[LogEvent]
+    nextToken: Optional[str] = None
+
+
+class StorageRequest(BaseModel):
+    """Model for storage requests."""
+
+    storageType: StorageType
+    storageCapacity: Optional[int] = None
+
+    @validator('storageCapacity')
+    def validate_storage_capacity(cls, v, values):
+        """Validate storage capacity."""
+        if values.get('storageType') == STORAGE_TYPE_STATIC and v is None:
+            raise ValueError(ERROR_STATIC_STORAGE_REQUIRES_CAPACITY)
+        return v
+
+
+class AnalysisResult(BaseModel):
+    """Model for run analysis results."""
+
+    taskName: str
+    count: int
+    meanRunningSeconds: float
+    maximumRunningSeconds: float
+    stdDevRunningSeconds: float
+    maximumCpuUtilizationRatio: float
+    meanCpuUtilizationRatio: float
+    maximumMemoryUtilizationRatio: float
+    meanMemoryUtilizationRatio: float
+    recommendedCpus: int
+    recommendedMemoryGiB: float
+    recommendedInstanceType: str
+    maximumEstimatedUSD: float
+    meanEstimatedUSD: float
+
+
+class AnalysisResponse(BaseModel):
+    """Response model for run analysis."""
+
+    results: List[AnalysisResult]
