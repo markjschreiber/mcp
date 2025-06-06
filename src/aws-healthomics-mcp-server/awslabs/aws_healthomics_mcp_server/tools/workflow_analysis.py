@@ -14,6 +14,8 @@
 
 """Workflow analysis tools for the AWS HealthOmics MCP server."""
 
+import botocore
+import botocore.exceptions
 import csv
 import os
 import subprocess
@@ -21,6 +23,8 @@ import tempfile
 from awslabs.aws_healthomics_mcp_server.consts import DEFAULT_REGION
 from awslabs.aws_healthomics_mcp_server.utils.aws_utils import get_aws_session
 from loguru import logger
+from mcp.server.fastmcp import Context
+from pydantic import Field
 from typing import Any, Dict, List, Optional
 
 
@@ -32,16 +36,30 @@ def get_logs_client():
     """
     region = os.environ.get('AWS_REGION', DEFAULT_REGION)
     session = get_aws_session(region)
-    return session.client('logs')
+    try:
+        return session.client('logs')
+    except Exception as e:
+        logger.error(f'Failed to create CloudWatch Logs client: {str(e)}')
+        raise
 
 
 async def analyze_run(
-    run_ids: List[str],
-    headroom: Optional[float] = 0.1,
+    ctx: Context,
+    run_ids: List[str] = Field(
+        ...,
+        description='List of run IDs to analyze',
+    ),
+    headroom: float = Field(
+        0.1,
+        description='Resource headroom factor (0.0-1.0)',
+        ge=0.0,
+        le=1.0,
+    ),
 ) -> Dict[str, Any]:
     """Analyze run performance using the run analyzer.
 
     Args:
+        ctx: MCP context for error reporting
         run_ids: List of run IDs to analyze
         headroom: Resource headroom factor (0.0-1.0, default: 0.1)
 
@@ -50,7 +68,10 @@ async def analyze_run(
     """
     # Validate headroom
     if not 0.0 <= headroom <= 1.0:
-        return {'error': 'Headroom must be between 0.0 and 1.0'}
+        error_message = 'Headroom must be between 0.0 and 1.0'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise ValueError(error_message)
 
     # Check if run analyzer is available
     try:
@@ -69,8 +90,10 @@ async def analyze_run(
             )
 
             if process.returncode != 0:
-                logger.error(f'Error running run analyzer: {process.stderr}')
-                return {'error': f'Run analyzer failed: {process.stderr}'}
+                error_message = f'Run analyzer failed: {process.stderr}'
+                logger.error(error_message)
+                await ctx.error(error_message)
+                raise RuntimeError(error_message)
 
             # Read the CSV output
             temp_file.seek(0)
@@ -104,22 +127,51 @@ async def analyze_run(
                 )
 
             return {'results': results}
+    except subprocess.SubprocessError as e:
+        error_message = f'Error executing run analyzer command: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
     except Exception as e:
-        logger.error(f'Error analyzing run: {str(e)}')
-        return {'error': str(e)}
+        error_message = f'Unexpected error analyzing run: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
 
 
 async def get_run_logs(
-    run_id: str,
-    task_id: Optional[str] = None,
-    start_time: Optional[str] = None,
-    end_time: Optional[str] = None,
-    limit: Optional[int] = 100,
-    next_token: Optional[str] = None,
+    ctx: Context,
+    run_id: str = Field(
+        ...,
+        description='ID of the run',
+    ),
+    task_id: Optional[str] = Field(
+        None,
+        description='Optional ID of a specific task',
+    ),
+    start_time: Optional[str] = Field(
+        None,
+        description='Optional start time for log retrieval (ISO format)',
+    ),
+    end_time: Optional[str] = Field(
+        None,
+        description='Optional end time for log retrieval (ISO format)',
+    ),
+    limit: int = Field(
+        100,
+        description='Maximum number of log events to return',
+        ge=1,
+        le=10000,
+    ),
+    next_token: Optional[str] = Field(
+        None,
+        description='Token for pagination from a previous response',
+    ),
 ) -> Dict[str, Any]:
     """Retrieve logs for a run or task.
 
     Args:
+        ctx: MCP context for error reporting
         run_id: ID of the run
         task_id: Optional ID of a specific task
         start_time: Optional start time for log retrieval (ISO format)
@@ -151,17 +203,21 @@ async def get_run_logs(
     if next_token:
         params['nextToken'] = next_token
 
-    if start_time:
-        from datetime import datetime
+    from datetime import datetime
 
-        start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-        params['startTime'] = int(start_dt.timestamp() * 1000)
+    try:
+        if start_time:
+            start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+            params['startTime'] = int(start_dt.timestamp() * 1000)
 
-    if end_time:
-        from datetime import datetime
-
-        end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
-        params['endTime'] = int(end_dt.timestamp() * 1000)
+        if end_time:
+            end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+            params['endTime'] = int(end_dt.timestamp() * 1000)
+    except ValueError as e:
+        error_message = f'Invalid timestamp format: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
 
     try:
         response = client.get_log_events(**params)
@@ -183,6 +239,13 @@ async def get_run_logs(
             result['nextToken'] = response['nextForwardToken']
 
         return result
+    except botocore.exceptions.BotoCoreError as e:
+        error_message = f'AWS error retrieving logs for run {run_id}: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
     except Exception as e:
-        logger.error(f'Error retrieving logs: {str(e)}')
-        return {'error': str(e)}
+        error_message = f'Unexpected error retrieving logs for run {run_id}: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise

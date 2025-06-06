@@ -14,7 +14,7 @@
 
 """Workflow execution tools for the AWS HealthOmics MCP server."""
 
-import boto3
+import botocore.exceptions
 import os
 from awslabs.aws_healthomics_mcp_server.consts import (
     CACHE_BEHAVIORS,
@@ -31,7 +31,7 @@ from awslabs.aws_healthomics_mcp_server.consts import (
 from awslabs.aws_healthomics_mcp_server.utils.aws_utils import get_aws_session
 from awslabs.aws_healthomics_mcp_server.utils.s3_utils import ensure_s3_uri_ends_with_slash
 from loguru import logger
-from mcp.server.context import Context
+from mcp.server.fastmcp import Context
 from pydantic import Field
 from typing import Any, Dict, Optional
 
@@ -178,7 +178,7 @@ async def start_run(
             'workflowVersionName': workflow_version_name,
             'outputUri': output_uri,
         }
-    except boto3.exceptions.Boto3Error as e:
+    except botocore.exceptions.BotoCoreError as e:
         error_message = f'AWS error starting run: {str(e)}'
         logger.error(error_message)
         await ctx.error(error_message)
@@ -282,7 +282,7 @@ async def list_runs(
             result['nextToken'] = response['nextToken']
 
         return result
-    except boto3.exceptions.Boto3Error as e:
+    except botocore.exceptions.BotoCoreError as e:
         error_message = f'AWS error listing runs: {str(e)}'
         logger.error(error_message)
         await ctx.error(error_message)
@@ -344,7 +344,7 @@ async def get_run(
             result['workflowVersionName'] = response['workflowVersionName']
 
         return result
-    except boto3.exceptions.Boto3Error as e:
+    except botocore.exceptions.BotoCoreError as e:
         error_message = f'AWS error getting run {run_id}: {str(e)}'
         logger.error(error_message)
         await ctx.error(error_message)
@@ -429,7 +429,7 @@ async def list_run_tasks(
             result['nextToken'] = response['nextToken']
 
         return result
-    except boto3.exceptions.Boto3Error as e:
+    except botocore.exceptions.BotoCoreError as e:
         error_message = f'AWS error listing tasks for run {run_id}: {str(e)}'
         logger.error(error_message)
         await ctx.error(error_message)
@@ -488,7 +488,7 @@ async def get_run_task(
             result['logStream'] = response['logStream']
 
         return result
-    except boto3.exceptions.Boto3Error as e:
+    except botocore.exceptions.BotoCoreError as e:
         error_message = f'AWS error getting task {task_id} for run {run_id}: {str(e)}'
         logger.error(error_message)
         await ctx.error(error_message)

@@ -14,6 +14,8 @@
 
 """Helper tools for the AWS HealthOmics MCP server."""
 
+import botocore
+import botocore.exceptions
 from awslabs.aws_healthomics_mcp_server.consts import (
     ERROR_INVALID_WORKFLOW_TYPE,
     WORKFLOW_TYPE_WDL,
@@ -29,24 +31,36 @@ from awslabs.aws_healthomics_mcp_server.utils.wdl_utils import (
     validate_wdl,
 )
 from loguru import logger
+from mcp.server.fastmcp import Context
+from pydantic import Field
 from typing import Any, Dict, Optional
 
 
 async def package_workflow(
-    main_file_content: str,
-    main_file_name: str = 'main.wdl',
-    additional_files: Optional[Dict[str, str]] = None,
-) -> str | Dict[str, str]:
+    ctx: Context,
+    main_file_content: str = Field(
+        ...,
+        description='Content of the main workflow file',
+    ),
+    main_file_name: str = Field(
+        'main.wdl',
+        description='Name of the main workflow file',
+    ),
+    additional_files: Optional[Dict[str, str]] = Field(
+        None,
+        description='Dictionary of additional files (filename: content)',
+    ),
+) -> str:
     """Package workflow definition files into a base64-encoded ZIP.
 
     Args:
+        ctx: MCP context for error reporting
         main_file_content: Content of the main workflow file
         main_file_name: Name of the main workflow file (default: main.wdl)
         additional_files: Dictionary of additional files (filename: content)
 
     Returns:
-        Base64-encoded ZIP file containing the workflow definition or a dictionary
-        containing an 'error' field and message if an error occured.
+        Base64-encoded ZIP file containing the workflow definition
     """
     try:
         # Create a dictionary of files
@@ -63,26 +77,39 @@ async def package_workflow(
 
         return base64_data
     except Exception as e:
-        logger.error(f'Error packaging workflow: {str(e)}')
-        return {'error': str(e)}
+        error_message = f'Error packaging workflow: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
 
 
 async def validate_workflow(
-    workflow_content: str,
-    workflow_type: str = 'WDL',
+    ctx: Context,
+    workflow_content: str = Field(
+        ...,
+        description='Content of the workflow file',
+    ),
+    workflow_type: str = Field(
+        'WDL',
+        description='Type of workflow (WDL, CWL, or Nextflow)',
+    ),
 ) -> Dict[str, Any]:
     """Validate workflow syntax.
 
     Args:
+        ctx: MCP context for error reporting
         workflow_content: Content of the workflow file
         workflow_type: Type of workflow (WDL, CWL, or Nextflow)
 
     Returns:
-        Dictionary containing validation results, or an error field and message if an error occured
+        Dictionary containing validation results
     """
     # Validate workflow type
     if workflow_type not in WORKFLOW_TYPES:
-        return {'error': ERROR_INVALID_WORKFLOW_TYPE.format(WORKFLOW_TYPES)}
+        error_message = ERROR_INVALID_WORKFLOW_TYPE.format(WORKFLOW_TYPES)
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise ValueError(error_message)
 
     try:
         if workflow_type == WORKFLOW_TYPE_WDL:
@@ -99,26 +126,39 @@ async def validate_workflow(
                 'message': f'Validation for {workflow_type} is not implemented yet. The workflow is assumed to be valid.',
             }
     except Exception as e:
-        logger.error(f'Error validating workflow: {str(e)}')
-        return {'error': str(e)}
+        error_message = f'Error validating workflow: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
 
 
 async def generate_parameter_template(
-    workflow_content: str,
-    workflow_type: str = 'WDL',
+    ctx: Context,
+    workflow_content: str = Field(
+        ...,
+        description='Content of the workflow file',
+    ),
+    workflow_type: str = Field(
+        'WDL',
+        description='Type of workflow (WDL, CWL, or Nextflow)',
+    ),
 ) -> Dict[str, Any]:
     """Generate parameter template from workflow.
 
     Args:
+        ctx: MCP context for error reporting
         workflow_content: Content of the workflow file
         workflow_type: Type of workflow (WDL, CWL, or Nextflow)
 
     Returns:
-        Dictionary containing the generated parameter template or an 'error' field and message if an error occured
+        Dictionary containing the generated parameter template
     """
     # Validate workflow type
     if workflow_type not in WORKFLOW_TYPES:
-        return {'error': ERROR_INVALID_WORKFLOW_TYPE.format(WORKFLOW_TYPES)}
+        error_message = ERROR_INVALID_WORKFLOW_TYPE.format(WORKFLOW_TYPES)
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise ValueError(error_message)
 
     try:
         if workflow_type == WORKFLOW_TYPE_WDL:
@@ -129,20 +169,30 @@ async def generate_parameter_template(
             }
         else:
             # For other workflow types, we don't have built-in parameter extraction yet
-            return {
-                'error': f'Parameter template generation for {workflow_type} is not implemented yet.',
-            }
+            error_message = (
+                f'Parameter template generation for {workflow_type} is not implemented yet.'
+            )
+            logger.error(error_message)
+            await ctx.error(error_message)
+            raise NotImplementedError(error_message)
     except Exception as e:
-        logger.error(f'Error generating parameter template: {str(e)}')
-        return {'error': str(e)}
+        error_message = f'Error generating parameter template: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
 
 
-async def get_supported_regions() -> Dict[str, Any]:
+async def get_supported_regions(
+    ctx: Context,
+) -> Dict[str, Any]:
     """Get the list of AWS regions where HealthOmics is available.
+
+    Args:
+        ctx: MCP context for error reporting
 
     Returns:
         Dictionary containing the list of supported region codes and the total count
-        of regions where HealthOmics is available or an error message
+        of regions where HealthOmics is available
     """
     try:
         # Create a boto3 SSM client
@@ -165,8 +215,24 @@ async def get_supported_regions() -> Dict[str, Any]:
             logger.warning('No regions found in SSM parameter store. Using hardcoded region list.')
 
         return {'regions': sorted(regions), 'count': len(regions)}
+    except botocore.exceptions.BotoCoreError as e:
+        error_message = f'AWS error retrieving supported regions: {str(e)}'
+        logger.error(error_message)
+        logger.info('Using hardcoded region list as fallback')
+
+        # Use hardcoded list as fallback
+        from awslabs.aws_healthomics_mcp_server.consts import HEALTHOMICS_SUPPORTED_REGIONS
+
+        return {
+            'regions': sorted(HEALTHOMICS_SUPPORTED_REGIONS),
+            'count': len(HEALTHOMICS_SUPPORTED_REGIONS),
+            'note': 'Using hardcoded region list due to error: ' + str(e),
+        }
     except Exception as e:
-        logger.error(f'Error retrieving supported regions: {str(e)}')
+        error_message = f'Unexpected error retrieving supported regions: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+
         # Use hardcoded list as fallback
         from awslabs.aws_healthomics_mcp_server.consts import HEALTHOMICS_SUPPORTED_REGIONS
 

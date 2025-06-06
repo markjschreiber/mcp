@@ -45,7 +45,43 @@ from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP(
     'awslabs.aws-healthomics-mcp-server',
-    instructions='AWS HealthOmics MCP server provides tools for creating, managing, and analyzing genomic workflows using AWS HealthOmics. It enables AI assistants to help users with workflow creation, execution, monitoring, and troubleshooting.',
+    instructions="""
+# AWS HealthOmics MCP Server
+
+This MCP server provides tools for creating, managing, and analyzing genomic workflows using AWS HealthOmics. It enables AI assistants to help users with workflow creation, execution, monitoring, and troubleshooting.
+
+## Available Tools
+
+### Workflow Management
+- **ListWorkflows**: List available HealthOmics workflows
+- **CreateWorkflow**: Create a new HealthOmics workflow
+- **GetWorkflow**: Get details about a specific workflow
+- **CreateWorkflowVersion**: Create a new version of an existing workflow
+- **ListWorkflowVersions**: List versions of a workflow
+
+### Workflow Execution
+- **StartRun**: Start a workflow run
+- **ListRuns**: List workflow runs
+- **GetRun**: Get details about a specific run
+- **ListRunTasks**: List tasks for a specific run
+- **GetRunTask**: Get details about a specific task
+
+### Workflow Analysis
+- **AnalyzeRun**: Analyze run performance using the run analyzer
+- **GetRunLogs**: Retrieve logs for a run or task
+
+### Troubleshooting
+- **DiagnoseRunFailure**: Diagnose a failed workflow run
+
+### Helper Tools
+- **PackageWorkflow**: Package workflow definition files into a base64-encoded ZIP
+- **ValidateWorkflow**: Validate workflow syntax
+- **GenerateParameterTemplate**: Generate parameter template from workflow
+- **GetSupportedRegions**: Get the list of AWS regions where HealthOmics is available
+
+## Service Availability
+AWS HealthOmics is available in select AWS regions. Use the GetSupportedRegions tool to get the current list of supported regions.
+""",
     dependencies=[
         'boto3',
         'pydantic',

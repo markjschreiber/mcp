@@ -14,7 +14,8 @@
 
 """Workflow management tools for the AWS HealthOmics MCP server."""
 
-import boto3
+import botocore
+import botocore.exceptions
 import os
 from awslabs.aws_healthomics_mcp_server.consts import (
     DEFAULT_MAX_RESULTS,
@@ -27,7 +28,7 @@ from awslabs.aws_healthomics_mcp_server.utils.aws_utils import (
     get_aws_session,
 )
 from loguru import logger
-from mcp.server.context import Context
+from mcp.server.fastmcp import Context
 from pydantic import Field
 from typing import Any, Dict, Optional
 
@@ -100,7 +101,7 @@ async def list_workflows(
             result['nextToken'] = response['nextToken']
 
         return result
-    except boto3.exceptions.Boto3Error as e:
+    except botocore.exceptions.BotoCoreError as e:
         error_message = f'AWS error listing workflows: {str(e)}'
         logger.error(error_message)
         await ctx.error(error_message)
@@ -174,7 +175,7 @@ async def create_workflow(
             'name': name,
             'description': description,
         }
-    except boto3.exceptions.Boto3Error as e:
+    except botocore.exceptions.BotoCoreError as e:
         error_message = f'AWS error creating workflow: {str(e)}'
         logger.error(error_message)
         await ctx.error(error_message)
@@ -243,7 +244,7 @@ async def get_workflow(
             result['definition'] = response['definition']
 
         return result
-    except boto3.exceptions.Boto3Error as e:
+    except botocore.exceptions.BotoCoreError as e:
         error_message = f'AWS error getting workflow {workflow_id}: {str(e)}'
         logger.error(error_message)
         await ctx.error(error_message)
@@ -344,7 +345,7 @@ async def create_workflow_version(
             'versionName': version_name,
             'description': description,
         }
-    except boto3.exceptions.Boto3Error as e:
+    except botocore.exceptions.BotoCoreError as e:
         error_message = f'AWS error creating workflow version: {str(e)}'
         logger.error(error_message)
         await ctx.error(error_message)
@@ -419,7 +420,7 @@ async def list_workflow_versions(
             result['nextToken'] = response['nextToken']
 
         return result
-    except boto3.exceptions.Boto3Error as e:
+    except botocore.exceptions.BotoCoreError as e:
         error_message = f'AWS error listing workflow versions for workflow {workflow_id}: {str(e)}'
         logger.error(error_message)
         await ctx.error(error_message)

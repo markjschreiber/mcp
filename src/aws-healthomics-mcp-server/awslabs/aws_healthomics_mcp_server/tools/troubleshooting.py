@@ -14,10 +14,14 @@
 
 """Troubleshooting tools for the AWS HealthOmics MCP server."""
 
+import botocore
+import botocore.exceptions
 import os
 from awslabs.aws_healthomics_mcp_server.consts import DEFAULT_REGION
 from awslabs.aws_healthomics_mcp_server.utils.aws_utils import get_aws_session
 from loguru import logger
+from mcp.server.fastmcp import Context
+from pydantic import Field
 from typing import Any, Dict
 
 
@@ -29,7 +33,11 @@ def get_omics_client():
     """
     region = os.environ.get('AWS_REGION', DEFAULT_REGION)
     session = get_aws_session(region)
-    return session.client('omics')
+    try:
+        return session.client('omics')
+    except Exception as e:
+        logger.error(f'Failed to create HealthOmics client: {str(e)}')
+        raise
 
 
 def get_logs_client():
@@ -40,15 +48,24 @@ def get_logs_client():
     """
     region = os.environ.get('AWS_REGION', DEFAULT_REGION)
     session = get_aws_session(region)
-    return session.client('logs')
+    try:
+        return session.client('logs')
+    except Exception as e:
+        logger.error(f'Failed to create CloudWatch Logs client: {str(e)}')
+        raise
 
 
 async def diagnose_run_failure(
-    run_id: str,
+    ctx: Context,
+    run_id: str = Field(
+        ...,
+        description='ID of the failed run',
+    ),
 ) -> Dict[str, Any]:
     """Diagnose a failed workflow run.
 
     Args:
+        ctx: MCP context for error reporting
         run_id: ID of the failed run
 
     Returns:
@@ -86,9 +103,10 @@ async def diagnose_run_failure(
             engine_logs = [
                 event.get('message', '') for event in engine_logs_response.get('events', [])
             ]
-        except Exception as e:
-            logger.error(f'Error retrieving engine logs: {str(e)}')
-            engine_logs = [f'Error retrieving engine logs: {str(e)}']
+        except botocore.exceptions.BotoCoreError as e:
+            error_message = f'Error retrieving engine logs: {str(e)}'
+            logger.error(error_message)
+            engine_logs = [error_message]
 
         # Get failed tasks
         tasks_response = omics_client.list_run_tasks(
@@ -115,9 +133,10 @@ async def diagnose_run_failure(
                 task_logs = [
                     event.get('message', '') for event in task_logs_response.get('events', [])
                 ]
-            except Exception as e:
-                logger.error(f'Error retrieving task logs: {str(e)}')
-                task_logs = [f'Error retrieving task logs: {str(e)}']
+            except botocore.exceptions.BotoCoreError as e:
+                error_message = f'Error retrieving task logs: {str(e)}'
+                logger.error(error_message)
+                task_logs = [error_message]
 
             failed_tasks.append(
                 {
@@ -145,6 +164,13 @@ async def diagnose_run_failure(
         }
 
         return diagnosis
+    except botocore.exceptions.BotoCoreError as e:
+        error_message = f'AWS error diagnosing run failure for run {run_id}: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
     except Exception as e:
-        logger.error(f'Error diagnosing run failure: {str(e)}')
-        return {'error': str(e)}
+        error_message = f'Unexpected error diagnosing run failure for run {run_id}: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
