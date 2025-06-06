@@ -19,6 +19,18 @@ DEFAULT_REGION = 'us-east-1'
 DEFAULT_STORAGE_TYPE = 'DYNAMIC'
 DEFAULT_MAX_RESULTS = 10
 
+# Supported regions (as of June 2025)
+# These are hardcoded as a fallback in case the SSM parameter store query fails
+HEALTHOMICS_SUPPORTED_REGIONS = [
+    'ap-southeast-1',
+    'eu-central-1',
+    'eu-west-1',
+    'eu-west-2',
+    'il-central-1',
+    'us-east-1',
+    'us-west-2',
+]
+
 # Workflow types
 WORKFLOW_TYPE_WDL = 'WDL'
 WORKFLOW_TYPE_NEXTFLOW = 'NEXTFLOW'

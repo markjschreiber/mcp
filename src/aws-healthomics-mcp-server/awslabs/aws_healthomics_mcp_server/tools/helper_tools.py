@@ -22,6 +22,7 @@ from awslabs.aws_healthomics_mcp_server.consts import (
 from awslabs.aws_healthomics_mcp_server.utils.aws_utils import (
     create_zip_file,
     encode_to_base64,
+    get_aws_session,
 )
 from awslabs.aws_healthomics_mcp_server.utils.wdl_utils import (
     extract_wdl_inputs,
@@ -35,7 +36,7 @@ async def package_workflow(
     main_file_content: str,
     main_file_name: str = 'main.wdl',
     additional_files: Optional[Dict[str, str]] = None,
-) -> str:
+) -> str | Dict[str, str]:
     """Package workflow definition files into a base64-encoded ZIP.
 
     Args:
@@ -44,7 +45,8 @@ async def package_workflow(
         additional_files: Dictionary of additional files (filename: content)
 
     Returns:
-        Base64-encoded ZIP file containing the workflow definition
+        Base64-encoded ZIP file containing the workflow definition or a dictionary
+        containing an 'error' field and message if an error occured.
     """
     try:
         # Create a dictionary of files
@@ -76,7 +78,7 @@ async def validate_workflow(
         workflow_type: Type of workflow (WDL, CWL, or Nextflow)
 
     Returns:
-        Dictionary containing validation results
+        Dictionary containing validation results, or an error field and message if an error occured
     """
     # Validate workflow type
     if workflow_type not in WORKFLOW_TYPES:
@@ -112,7 +114,7 @@ async def generate_parameter_template(
         workflow_type: Type of workflow (WDL, CWL, or Nextflow)
 
     Returns:
-        Dictionary containing the generated parameter template
+        Dictionary containing the generated parameter template or an 'error' field and message if an error occured
     """
     # Validate workflow type
     if workflow_type not in WORKFLOW_TYPES:
@@ -133,3 +135,43 @@ async def generate_parameter_template(
     except Exception as e:
         logger.error(f'Error generating parameter template: {str(e)}')
         return {'error': str(e)}
+
+
+async def get_supported_regions() -> Dict[str, Any]:
+    """Get the list of AWS regions where HealthOmics is available.
+
+    Returns:
+        Dictionary containing the list of supported region codes and the total count
+        of regions where HealthOmics is available or an error message
+    """
+    try:
+        # Create a boto3 SSM client
+        session = get_aws_session()
+        ssm_client = session.client('ssm')
+
+        # Get the parameters from the SSM parameter store
+        response = ssm_client.get_parameters_by_path(
+            Path='/aws/service/global-infrastructure/services/omics/regions'
+        )
+
+        # Extract the region values
+        regions = [param['Value'] for param in response['Parameters']]
+
+        # If no regions found, use the hardcoded list as fallback
+        if not regions:
+            from awslabs.aws_healthomics_mcp_server.consts import HEALTHOMICS_SUPPORTED_REGIONS
+
+            regions = HEALTHOMICS_SUPPORTED_REGIONS
+            logger.warning('No regions found in SSM parameter store. Using hardcoded region list.')
+
+        return {'regions': sorted(regions), 'count': len(regions)}
+    except Exception as e:
+        logger.error(f'Error retrieving supported regions: {str(e)}')
+        # Use hardcoded list as fallback
+        from awslabs.aws_healthomics_mcp_server.consts import HEALTHOMICS_SUPPORTED_REGIONS
+
+        return {
+            'regions': sorted(HEALTHOMICS_SUPPORTED_REGIONS),
+            'count': len(HEALTHOMICS_SUPPORTED_REGIONS),
+            'note': 'Using hardcoded region list due to error: ' + str(e),
+        }

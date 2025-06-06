@@ -55,7 +55,7 @@ async def list_workflows(
     """
     client = get_omics_client()
 
-    params = {'maxResults': max_results}
+    params: dict[str, Any] = {'maxResults': max_results}
     if next_token:
         params['startingToken'] = next_token
 

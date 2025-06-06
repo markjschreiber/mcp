@@ -16,6 +16,7 @@
 
 from awslabs.aws_healthomics_mcp_server.tools.helper_tools import (
     generate_parameter_template,
+    get_supported_regions,
     package_workflow,
     validate_workflow,
 )
@@ -77,6 +78,7 @@ mcp.tool(name='DiagnoseRunFailure')(diagnose_run_failure)
 mcp.tool(name='PackageWorkflow')(package_workflow)
 mcp.tool(name='ValidateWorkflow')(validate_workflow)
 mcp.tool(name='GenerateParameterTemplate')(generate_parameter_template)
+mcp.tool(name='GetSupportedRegions')(get_supported_regions)
 
 
 def main():

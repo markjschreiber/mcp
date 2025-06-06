@@ -153,7 +153,7 @@ async def list_runs(
     if status and status not in RUN_STATUSES:
         return {'error': ERROR_INVALID_RUN_STATUS.format(RUN_STATUSES)}
 
-    params = {'maxResults': max_results}
+    params: dict[str, Any] = {'maxResults': max_results}
 
     if next_token:
         params['startingToken'] = next_token
