@@ -14,6 +14,7 @@
 
 """Workflow execution tools for the AWS HealthOmics MCP server."""
 
+import boto3
 import os
 from awslabs.aws_healthomics_mcp_server.consts import (
     CACHE_BEHAVIORS,
@@ -30,6 +31,8 @@ from awslabs.aws_healthomics_mcp_server.consts import (
 from awslabs.aws_healthomics_mcp_server.utils.aws_utils import get_aws_session
 from awslabs.aws_healthomics_mcp_server.utils.s3_utils import ensure_s3_uri_ends_with_slash
 from loguru import logger
+from mcp.server.context import Context
+from pydantic import Field
 from typing import Any, Dict, Optional
 
 
@@ -41,24 +44,61 @@ def get_omics_client():
     """
     region = os.environ.get('AWS_REGION', DEFAULT_REGION)
     session = get_aws_session(region)
-    return session.client('omics')
+    try:
+        return session.client('omics')
+    except Exception as e:
+        logger.error(f'Failed to create HealthOmics client: {str(e)}')
+        raise
 
 
 async def start_run(
-    workflow_id: str,
-    role_arn: str,
-    name: str,
-    output_uri: str,
-    parameters: Dict[str, Any],
-    workflow_version_name: Optional[str] = None,
-    storage_type: Optional[str] = 'DYNAMIC',
-    storage_capacity: Optional[int] = None,
-    cache_id: Optional[str] = None,
-    cache_behavior: Optional[str] = None,
+    ctx: Context,
+    workflow_id: str = Field(
+        ...,
+        description='ID of the workflow to run',
+    ),
+    role_arn: str = Field(
+        ...,
+        description='ARN of the IAM role to use for the run',
+    ),
+    name: str = Field(
+        ...,
+        description='Name for the run',
+    ),
+    output_uri: str = Field(
+        ...,
+        description='S3 URI for the run outputs',
+    ),
+    parameters: Dict[str, Any] = Field(
+        ...,
+        description='Parameters for the workflow',
+    ),
+    workflow_version_name: Optional[str] = Field(
+        None,
+        description='Optional version name to run',
+    ),
+    storage_type: str = Field(
+        'DYNAMIC',
+        description='Storage type (STATIC or DYNAMIC)',
+    ),
+    storage_capacity: Optional[int] = Field(
+        None,
+        description='Storage capacity in GB (required for STATIC)',
+        ge=1,
+    ),
+    cache_id: Optional[str] = Field(
+        None,
+        description='Optional ID of a run cache to use',
+    ),
+    cache_behavior: Optional[str] = Field(
+        None,
+        description='Optional cache behavior (CACHE_ALWAYS or CACHE_ON_FAILURE)',
+    ),
 ) -> Dict[str, Any]:
     """Start a workflow run.
 
     Args:
+        ctx: MCP context for error reporting
         workflow_id: ID of the workflow to run
         role_arn: ARN of the IAM role to use for the run
         name: Name for the run
@@ -77,18 +117,33 @@ async def start_run(
 
     # Validate storage type
     if storage_type not in STORAGE_TYPES:
-        return {'error': ERROR_INVALID_STORAGE_TYPE.format(STORAGE_TYPES)}
+        error_message = ERROR_INVALID_STORAGE_TYPE.format(STORAGE_TYPES)
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise ValueError(error_message)
 
     # Validate storage capacity for STATIC storage
     if storage_type == STORAGE_TYPE_STATIC and storage_capacity is None:
-        return {'error': ERROR_STATIC_STORAGE_REQUIRES_CAPACITY}
+        error_message = ERROR_STATIC_STORAGE_REQUIRES_CAPACITY
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise ValueError(error_message)
 
     # Validate cache behavior
     if cache_behavior and cache_behavior not in CACHE_BEHAVIORS:
-        return {'error': ERROR_INVALID_CACHE_BEHAVIOR.format(CACHE_BEHAVIORS)}
+        error_message = ERROR_INVALID_CACHE_BEHAVIOR.format(CACHE_BEHAVIORS)
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise ValueError(error_message)
 
     # Ensure output URI ends with a slash
-    output_uri = ensure_s3_uri_ends_with_slash(output_uri)
+    try:
+        output_uri = ensure_s3_uri_ends_with_slash(output_uri)
+    except ValueError as e:
+        error_message = f'Invalid S3 URI: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
 
     params = {
         'workflowId': workflow_id,
@@ -123,21 +178,47 @@ async def start_run(
             'workflowVersionName': workflow_version_name,
             'outputUri': output_uri,
         }
+    except boto3.exceptions.Boto3Error as e:
+        error_message = f'AWS error starting run: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
     except Exception as e:
-        logger.error(f'Error starting run: {str(e)}')
-        return {'error': str(e)}
+        error_message = f'Unexpected error starting run: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
 
 
 async def list_runs(
-    max_results: Optional[int] = DEFAULT_MAX_RESULTS,
-    next_token: Optional[str] = None,
-    status: Optional[str] = None,
-    created_after: Optional[str] = None,
-    created_before: Optional[str] = None,
+    ctx: Context,
+    max_results: int = Field(
+        DEFAULT_MAX_RESULTS,
+        description='Maximum number of results to return',
+        ge=1,
+        le=100,
+    ),
+    next_token: Optional[str] = Field(
+        None,
+        description='Token for pagination from a previous response',
+    ),
+    status: Optional[str] = Field(
+        None,
+        description='Filter by run status',
+    ),
+    created_after: Optional[str] = Field(
+        None,
+        description='Filter for runs created after this timestamp (ISO format)',
+    ),
+    created_before: Optional[str] = Field(
+        None,
+        description='Filter for runs created before this timestamp (ISO format)',
+    ),
 ) -> Dict[str, Any]:
     """List workflow runs.
 
     Args:
+        ctx: MCP context for error reporting
         max_results: Maximum number of results to return (default: 10)
         next_token: Token for pagination
         status: Filter by run status
@@ -151,7 +232,10 @@ async def list_runs(
 
     # Validate status
     if status and status not in RUN_STATUSES:
-        return {'error': ERROR_INVALID_RUN_STATUS.format(RUN_STATUSES)}
+        error_message = ERROR_INVALID_RUN_STATUS.format(RUN_STATUSES)
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise ValueError(error_message)
 
     params: dict[str, Any] = {'maxResults': max_results}
 
@@ -198,17 +282,29 @@ async def list_runs(
             result['nextToken'] = response['nextToken']
 
         return result
+    except boto3.exceptions.Boto3Error as e:
+        error_message = f'AWS error listing runs: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
     except Exception as e:
-        logger.error(f'Error listing runs: {str(e)}')
-        return {'error': str(e)}
+        error_message = f'Unexpected error listing runs: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
 
 
 async def get_run(
-    run_id: str,
+    ctx: Context,
+    run_id: str = Field(
+        ...,
+        description='ID of the run to retrieve',
+    ),
 ) -> Dict[str, Any]:
     """Get details about a specific run.
 
     Args:
+        ctx: MCP context for error reporting
         run_id: ID of the run to retrieve
 
     Returns:
@@ -248,20 +344,43 @@ async def get_run(
             result['workflowVersionName'] = response['workflowVersionName']
 
         return result
+    except boto3.exceptions.Boto3Error as e:
+        error_message = f'AWS error getting run {run_id}: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
     except Exception as e:
-        logger.error(f'Error getting run: {str(e)}')
-        return {'error': str(e)}
+        error_message = f'Unexpected error getting run {run_id}: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
 
 
 async def list_run_tasks(
-    run_id: str,
-    max_results: Optional[int] = DEFAULT_MAX_RESULTS,
-    next_token: Optional[str] = None,
-    status: Optional[str] = None,
+    ctx: Context,
+    run_id: str = Field(
+        ...,
+        description='ID of the run',
+    ),
+    max_results: int = Field(
+        DEFAULT_MAX_RESULTS,
+        description='Maximum number of results to return',
+        ge=1,
+        le=100,
+    ),
+    next_token: Optional[str] = Field(
+        None,
+        description='Token for pagination from a previous response',
+    ),
+    status: Optional[str] = Field(
+        None,
+        description='Filter by task status',
+    ),
 ) -> Dict[str, Any]:
     """List tasks for a specific run.
 
     Args:
+        ctx: MCP context for error reporting
         run_id: ID of the run
         max_results: Maximum number of results to return (default: 10)
         next_token: Token for pagination
@@ -310,18 +429,33 @@ async def list_run_tasks(
             result['nextToken'] = response['nextToken']
 
         return result
+    except boto3.exceptions.Boto3Error as e:
+        error_message = f'AWS error listing tasks for run {run_id}: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
     except Exception as e:
-        logger.error(f'Error listing run tasks: {str(e)}')
-        return {'error': str(e)}
+        error_message = f'Unexpected error listing tasks for run {run_id}: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
 
 
 async def get_run_task(
-    run_id: str,
-    task_id: str,
+    ctx: Context,
+    run_id: str = Field(
+        ...,
+        description='ID of the run',
+    ),
+    task_id: str = Field(
+        ...,
+        description='ID of the task',
+    ),
 ) -> Dict[str, Any]:
     """Get details about a specific task.
 
     Args:
+        ctx: MCP context for error reporting
         run_id: ID of the run
         task_id: ID of the task
 
@@ -354,6 +488,13 @@ async def get_run_task(
             result['logStream'] = response['logStream']
 
         return result
+    except boto3.exceptions.Boto3Error as e:
+        error_message = f'AWS error getting task {task_id} for run {run_id}: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
     except Exception as e:
-        logger.error(f'Error getting run task: {str(e)}')
-        return {'error': str(e)}
+        error_message = f'Unexpected error getting task {task_id} for run {run_id}: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
