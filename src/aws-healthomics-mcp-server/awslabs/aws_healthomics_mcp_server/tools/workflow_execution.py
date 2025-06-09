@@ -328,6 +328,12 @@ async def get_run(
             'outputUri': response.get('outputUri'),
         }
 
+        if 'parameters' in response:
+            result['parameters'] = response['parameters']
+
+        if 'uuid' in response:
+            result['uuid'] = response['uuid']
+
         if 'startTime' in response:
             result['startTime'] = response['startTime'].isoformat()
 

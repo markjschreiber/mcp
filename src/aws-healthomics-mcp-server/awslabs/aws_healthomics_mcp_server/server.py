@@ -22,7 +22,10 @@ from awslabs.aws_healthomics_mcp_server.tools.helper_tools import (
 from awslabs.aws_healthomics_mcp_server.tools.troubleshooting import diagnose_run_failure
 from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import (
     analyze_run,
+    get_run_engine_logs,
     get_run_logs,
+    get_run_manifest_logs,
+    get_task_logs,
 )
 from awslabs.aws_healthomics_mcp_server.tools.workflow_execution import (
     get_run,
@@ -104,6 +107,9 @@ mcp.tool(name='GetRunTask')(get_run_task)
 # Register workflow analysis tools
 mcp.tool(name='AnalyzeRun')(analyze_run)
 mcp.tool(name='GetRunLogs')(get_run_logs)
+mcp.tool(name='GetRunManifestLogs')(get_run_manifest_logs)
+mcp.tool(name='GetRunEngineLogs')(get_run_engine_logs)
+mcp.tool(name='GetTaskLogs')(get_task_logs)
 
 # Register troubleshooting tools
 mcp.tool(name='DiagnoseRunFailure')(diagnose_run_failure)

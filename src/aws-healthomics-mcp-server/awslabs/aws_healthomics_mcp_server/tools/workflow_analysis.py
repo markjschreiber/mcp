@@ -139,15 +139,73 @@ async def analyze_run(
         raise
 
 
+async def _get_logs_from_stream(
+    client,
+    log_group_name: str,
+    log_stream_name: str,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    limit: int = 100,
+    next_token: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Helper function to retrieve logs from a specific CloudWatch log stream.
+
+    Args:
+        client: CloudWatch Logs client
+        log_group_name: Name of the log group
+        log_stream_name: Name of the log stream
+        start_time: Optional start time for log retrieval (ISO format)
+        end_time: Optional end time for log retrieval (ISO format)
+        limit: Maximum number of log events to return
+        next_token: Token for pagination
+
+    Returns:
+        Dictionary containing log events and next token if available
+    """
+    from datetime import datetime
+
+    params = {
+        'logGroupName': log_group_name,
+        'logStreamName': log_stream_name,
+        'limit': limit,
+        'startFromHead': True,
+    }
+
+    if next_token:
+        params['nextToken'] = next_token
+
+    if start_time:
+        start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+        params['startTime'] = int(start_dt.timestamp() * 1000)
+
+    if end_time:
+        end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+        params['endTime'] = int(end_dt.timestamp() * 1000)
+
+    response = client.get_log_events(**params)
+
+    # Transform the response to a more user-friendly format
+    events = []
+    for event in response.get('events', []):
+        events.append(
+            {
+                'timestamp': datetime.fromtimestamp(event.get('timestamp', 0) / 1000).isoformat(),
+                'message': event.get('message', ''),
+            }
+        )
+
+    result = {'events': events}
+    if 'nextForwardToken' in response:
+        result['nextToken'] = response['nextForwardToken']
+
+    return result
+
+
 async def get_run_logs(
     ctx: Context,
     run_id: str = Field(
         ...,
         description='ID of the run',
-    ),
-    task_id: Optional[str] = Field(
-        None,
-        description='Optional ID of a specific task',
     ),
     start_time: Optional[str] = Field(
         None,
@@ -168,84 +226,265 @@ async def get_run_logs(
         description='Token for pagination from a previous response',
     ),
 ) -> Dict[str, Any]:
-    """Retrieve logs for a run or task.
+    """Retrieve high-level run logs that show workflow execution events.
+
+    These logs contain a high-level summary of events during a run including:
+    - Run creation and start events
+    - File import start and completion
+    - Workflow task start and completion
+    - Export start and completion
+    - Workflow completion
 
     Args:
         ctx: MCP context for error reporting
         run_id: ID of the run
-        task_id: Optional ID of a specific task
         start_time: Optional start time for log retrieval (ISO format)
         end_time: Optional end time for log retrieval (ISO format)
         limit: Maximum number of log events to return (default: 100)
-        next_token: Token for pagination
+        next_token: Token for pagination from a previous response
 
     Returns:
         Dictionary containing log events and next token if available
     """
     client = get_logs_client()
-
-    # Construct log group and log stream names
     log_group_name = '/aws/omics/WorkflowLog'
     log_stream_name = f'run/{run_id}'
 
-    if task_id:
-        log_stream_name += f'/task/{task_id}'
-    else:
-        log_stream_name += '/engine'
-
-    params = {
-        'logGroupName': log_group_name,
-        'logStreamName': log_stream_name,
-        'limit': limit,
-        'startFromHead': True,
-    }
-
-    if next_token:
-        params['nextToken'] = next_token
-
-    from datetime import datetime
-
     try:
-        if start_time:
-            start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-            params['startTime'] = int(start_dt.timestamp() * 1000)
-
-        if end_time:
-            end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
-            params['endTime'] = int(end_dt.timestamp() * 1000)
+        return await _get_logs_from_stream(
+            client, log_group_name, log_stream_name, start_time, end_time, limit, next_token
+        )
     except ValueError as e:
         error_message = f'Invalid timestamp format: {str(e)}'
         logger.error(error_message)
         await ctx.error(error_message)
         raise
-
-    try:
-        response = client.get_log_events(**params)
-
-        # Transform the response to a more user-friendly format
-        events = []
-        for event in response.get('events', []):
-            events.append(
-                {
-                    'timestamp': datetime.fromtimestamp(
-                        event.get('timestamp', 0) / 1000
-                    ).isoformat(),
-                    'message': event.get('message', ''),
-                }
-            )
-
-        result = {'events': events}
-        if 'nextForwardToken' in response:
-            result['nextToken'] = response['nextForwardToken']
-
-        return result
     except botocore.exceptions.BotoCoreError as e:
-        error_message = f'AWS error retrieving logs for run {run_id}: {str(e)}'
+        error_message = f'AWS error retrieving run logs for run {run_id}: {str(e)}'
         logger.error(error_message)
         await ctx.error(error_message)
         raise
     except Exception as e:
-        error_message = f'Unexpected error retrieving logs for run {run_id}: {str(e)}'
+        error_message = f'Unexpected error retrieving run logs for run {run_id}: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
+
+
+async def get_run_manifest_logs(
+    ctx: Context,
+    run_id: str = Field(
+        ...,
+        description='ID of the run',
+    ),
+    run_uuid: Optional[str] = Field(
+        ...,
+        description='Optional UUID of the run',
+    ),
+    start_time: Optional[str] = Field(
+        None,
+        description='Optional start time for log retrieval (ISO format)',
+    ),
+    end_time: Optional[str] = Field(
+        None,
+        description='Optional end time for log retrieval (ISO format)',
+    ),
+    limit: int = Field(
+        100,
+        description='Maximum number of log events to return',
+        ge=1,
+        le=10000,
+    ),
+    next_token: Optional[str] = Field(
+        None,
+        description='Token for pagination from a previous response',
+    ),
+) -> Dict[str, Any]:
+    """Retrieve run manifest logs produced when a workflow completes or fails.
+
+    These logs contain a summary of the overall workflow including:
+    - Runtime information
+    - Inputs and input digests
+    - Messages and status information
+    - Task summaries with resource allocation and utilization metrics
+
+    Args:
+        ctx: MCP context for error reporting
+        run_id: ID of the run
+        run_uuid: Optional UUID of the run
+        start_time: Optional start time for log retrieval (ISO format)
+        end_time: Optional end time for log retrieval (ISO format)
+        limit: Maximum number of log events to return (default: 100)
+        next_token: Token for pagination from a previous response
+
+    Returns:
+        Dictionary containing log events and next token if available
+    """
+    client = get_logs_client()
+    log_group_name = '/aws/omics/WorkflowLog'
+    log_stream_name = f'manifest/run/{run_id}/{run_uuid}' if run_uuid else f'manifest/run/{run_id}'
+    try:
+        return await _get_logs_from_stream(
+            client, log_group_name, log_stream_name, start_time, end_time, limit, next_token
+        )
+    except ValueError as e:
+        error_message = f'Invalid timestamp format: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
+    except botocore.exceptions.BotoCoreError as e:
+        error_message = f'AWS error retrieving manifest logs for run {run_id}: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
+    except Exception as e:
+        error_message = f'Unexpected error retrieving manifest logs for run {run_id}: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
+
+
+async def get_run_engine_logs(
+    ctx: Context,
+    run_id: str = Field(
+        ...,
+        description='ID of the run',
+    ),
+    start_time: Optional[str] = Field(
+        None,
+        description='Optional start time for log retrieval (ISO format)',
+    ),
+    end_time: Optional[str] = Field(
+        None,
+        description='Optional end time for log retrieval (ISO format)',
+    ),
+    limit: int = Field(
+        100,
+        description='Maximum number of log events to return',
+        ge=1,
+        le=10000,
+    ),
+    next_token: Optional[str] = Field(
+        None,
+        description='Token for pagination from a previous response',
+    ),
+) -> Dict[str, Any]:
+    """Retrieve engine logs containing STDOUT and STDERR from the workflow engine process.
+
+    These logs contain all output from the workflow engine process including:
+    - Engine startup and initialization messages
+    - Workflow parsing and validation output
+    - Task scheduling and execution messages
+    - Error messages and debugging information
+
+    Args:
+        ctx: MCP context for error reporting
+        run_id: ID of the run
+        start_time: Optional start time for log retrieval (ISO format)
+        end_time: Optional end time for log retrieval (ISO format)
+        limit: Maximum number of log events to return (default: 100)
+        next_token: Token for pagination from a previous response
+
+    Returns:
+        Dictionary containing log events and next token if available
+    """
+    client = get_logs_client()
+    log_group_name = '/aws/omics/WorkflowLog'
+    log_stream_name = f'run/{run_id}/engine'
+
+    try:
+        return await _get_logs_from_stream(
+            client, log_group_name, log_stream_name, start_time, end_time, limit, next_token
+        )
+    except ValueError as e:
+        error_message = f'Invalid timestamp format: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
+    except botocore.exceptions.BotoCoreError as e:
+        error_message = f'AWS error retrieving engine logs for run {run_id}: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
+    except Exception as e:
+        error_message = f'Unexpected error retrieving engine logs for run {run_id}: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
+
+
+async def get_task_logs(
+    ctx: Context,
+    run_id: str = Field(
+        ...,
+        description='ID of the run',
+    ),
+    task_id: str = Field(
+        ...,
+        description='ID of the specific task',
+    ),
+    start_time: Optional[str] = Field(
+        None,
+        description='Optional start time for log retrieval (ISO format)',
+    ),
+    end_time: Optional[str] = Field(
+        None,
+        description='Optional end time for log retrieval (ISO format)',
+    ),
+    limit: int = Field(
+        100,
+        description='Maximum number of log events to return',
+        ge=1,
+        le=10000,
+    ),
+    next_token: Optional[str] = Field(
+        None,
+        description='Token for pagination from a previous response',
+    ),
+) -> Dict[str, Any]:
+    """Retrieve logs for a specific workflow task containing STDOUT and STDERR.
+
+    These logs contain the output from a specific task process including:
+    - Task container startup messages
+    - Application-specific output and error messages
+    - Task completion or failure information
+
+    Args:
+        ctx: MCP context for error reporting
+        run_id: ID of the run
+        task_id: ID of the specific task
+        start_time: Optional start time for log retrieval (ISO format)
+        end_time: Optional end time for log retrieval (ISO format)
+        limit: Maximum number of log events to return (default: 100)
+        next_token: Token for pagination from a previous response
+
+    Returns:
+        Dictionary containing log events and next token if available
+    """
+    client = get_logs_client()
+    log_group_name = '/aws/omics/WorkflowLog'
+    log_stream_name = f'run/{run_id}/task/{task_id}'
+
+    try:
+        return await _get_logs_from_stream(
+            client, log_group_name, log_stream_name, start_time, end_time, limit, next_token
+        )
+    except ValueError as e:
+        error_message = f'Invalid timestamp format: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
+    except botocore.exceptions.BotoCoreError as e:
+        error_message = (
+            f'AWS error retrieving task logs for run {run_id}, task {task_id}: {str(e)}'
+        )
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
+    except Exception as e:
+        error_message = (
+            f'Unexpected error retrieving task logs for run {run_id}, task {task_id}: {str(e)}'
+        )
         logger.error(error_message)
         await ctx.error(error_message)
         raise
