@@ -164,7 +164,7 @@ async def _get_logs_from_stream(
     Returns:
         Dictionary containing log events and next token if available
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     params = {
         'logGroupName': log_group_name,
@@ -189,9 +189,12 @@ async def _get_logs_from_stream(
     # Transform the response to a more user-friendly format
     events = []
     for event in response.get('events', []):
+        # Convert timestamp from milliseconds to UTC ISO format
+        timestamp_ms = event.get('timestamp', 0)
+        timestamp_dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
         events.append(
             {
-                'timestamp': datetime.fromtimestamp(event.get('timestamp', 0) / 1000).isoformat(),
+                'timestamp': timestamp_dt.isoformat().replace('+00:00', 'Z'),
                 'message': event.get('message', ''),
             }
         )

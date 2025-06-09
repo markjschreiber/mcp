@@ -60,9 +60,9 @@ async def diagnose_run_failure(
     Returns:
         Dictionary containing diagnostic information
     """
-    omics_client = get_omics_client()
-
     try:
+        omics_client = get_omics_client()
+
         # Get run details
         run_response = omics_client.get_run(id=run_id)
 
@@ -151,6 +151,11 @@ async def diagnose_run_failure(
         }
 
         return diagnosis
+    except botocore.exceptions.ClientError as e:
+        error_message = f'AWS error diagnosing run failure for run {run_id}: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
     except botocore.exceptions.BotoCoreError as e:
         error_message = f'AWS error diagnosing run failure for run {run_id}: {str(e)}'
         logger.error(error_message)

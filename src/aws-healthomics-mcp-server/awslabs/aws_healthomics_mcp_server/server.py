@@ -70,7 +70,10 @@ This MCP server provides tools for creating, managing, and analyzing genomic wor
 
 ### Workflow Analysis
 - **AnalyzeRun**: Analyze run performance using the run analyzer
-- **GetRunLogs**: Retrieve logs for a run or task
+- **GetRunLogs**: Retrieve high-level run logs showing workflow execution events
+- **GetRunManifestLogs**: Retrieve run manifest logs with workflow summary
+- **GetRunEngineLogs**: Retrieve engine logs containing STDOUT and STDERR
+- **GetTaskLogs**: Retrieve logs for specific workflow tasks
 
 ### Troubleshooting
 - **DiagnoseRunFailure**: Diagnose a failed workflow run

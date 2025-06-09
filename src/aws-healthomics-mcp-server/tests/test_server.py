@@ -10,34 +10,59 @@
 # and limitations under the License.
 """Tests for the aws-healthomics MCP Server."""
 
-import pytest
-from awslabs.aws_healthomics_mcp_server.server import example_tool
+from awslabs.aws_healthomics_mcp_server.server import mcp
 
 
-@pytest.mark.asyncio
-async def test_example_tool():
-    """Tests Basic Happy Path of example tool."""
-    # Arrange
-    test_query = 'test query'
-    expected_project_name = 'awslabs aws-healthomics MCP Server'
-    expected_response = f"Hello from {expected_project_name}! Your query was {test_query}. Replace this with your tool's logic"
-
-    # Act
-    result = await example_tool(test_query)
+def test_server_initialization():
+    """Test that the MCP server initializes correctly."""
+    # Arrange & Act
+    server = mcp
 
     # Assert
-    assert result == expected_response
+    assert server is not None
+    assert server.name == 'awslabs.aws-healthomics-mcp-server'
+    assert 'AWS HealthOmics MCP Server' in server.instructions
 
 
-# @pytest.mark.asyncio
-# async def test_example_tool_failure():
-#     # Arrange
-#     test_query = 'test query'
-#     expected_project_name = 'awslabs aws-healthomics MCP Server'
-#     expected_response = f"Hello from {expected_project_name}! Your query was {test_query}. Replace this your tool's new logic"
+def test_server_has_required_tools():
+    """Test that the server has all required tools registered."""
+    # Arrange
+    expected_tools = [
+        'ListWorkflows',
+        'CreateWorkflow',
+        'GetWorkflow',
+        'CreateWorkflowVersion',
+        'ListWorkflowVersions',
+        'StartRun',
+        'ListRuns',
+        'GetRun',
+        'ListRunTasks',
+        'GetRunTask',
+        'AnalyzeRun',
+        'GetRunLogs',
+        'GetRunManifestLogs',
+        'GetRunEngineLogs',
+        'GetTaskLogs',
+        'DiagnoseRunFailure',
+        'PackageWorkflow',
+        'ValidateWorkflow',
+        'GetSupportedRegions',
+    ]
 
-#     # Act
-#     result = await example_tool(test_query)
+    # Act
+    server = mcp
 
-#     # Assert
-#     assert result != expected_response
+    # Assert
+    assert server is not None
+
+    # Verify all expected tools are mentioned in the server instructions
+    instructions = server.instructions
+    for tool_name in expected_tools:
+        assert f'**{tool_name}**' in instructions, (
+            f'Tool {tool_name} not found in server instructions'
+        )
+
+    # Verify server has the expected dependencies
+    expected_dependencies = ['boto3', 'pydantic', 'loguru']
+    for dep in expected_dependencies:
+        assert dep in server.dependencies
