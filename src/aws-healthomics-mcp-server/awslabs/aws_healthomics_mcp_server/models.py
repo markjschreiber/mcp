@@ -16,11 +16,10 @@
 
 from awslabs.aws_healthomics_mcp_server.consts import (
     ERROR_STATIC_STORAGE_REQUIRES_CAPACITY,
-    STORAGE_TYPE_STATIC,
 )
 from datetime import datetime
 from enum import Enum
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, model_validator
 from typing import List, Optional
 
 
@@ -146,13 +145,12 @@ class StorageRequest(BaseModel):
     storageType: StorageType
     storageCapacity: Optional[int] = None
 
-    @field_validator('storageCapacity')
-    @classmethod
-    def validate_storage_capacity(cls, v, info):
+    @model_validator(mode='after')
+    def validate_storage_capacity(self):
         """Validate storage capacity."""
-        if info.data.get('storageType') == STORAGE_TYPE_STATIC and v is None:
+        if self.storageType == StorageType.STATIC and self.storageCapacity is None:
             raise ValueError(ERROR_STATIC_STORAGE_REQUIRES_CAPACITY)
-        return v
+        return self
 
 
 class AnalysisResult(BaseModel):
