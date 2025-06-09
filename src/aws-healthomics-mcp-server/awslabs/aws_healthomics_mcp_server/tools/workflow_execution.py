@@ -269,10 +269,10 @@ async def list_runs(
                 else None,
             }
 
-            if 'startTime' in run:
+            if 'startTime' in run and run['startTime'] is not None:
                 run_info['startTime'] = run['startTime'].isoformat()
 
-            if 'stopTime' in run:
+            if 'stopTime' in run and run['stopTime'] is not None:
                 run_info['stopTime'] = run['stopTime'].isoformat()
 
             runs.append(run_info)
@@ -282,6 +282,11 @@ async def list_runs(
             result['nextToken'] = response['nextToken']
 
         return result
+    except botocore.exceptions.ClientError as e:
+        error_message = f'AWS error listing runs: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
     except botocore.exceptions.BotoCoreError as e:
         error_message = f'AWS error listing runs: {str(e)}'
         logger.error(error_message)
@@ -334,22 +339,22 @@ async def get_run(
         if 'uuid' in response:
             result['uuid'] = response['uuid']
 
-        if 'startTime' in response:
-            result['startTime'] = response['startTime'].isoformat()
+        # Handle optional datetime fields
+        for field in ['startTime', 'stopTime']:
+            if field in response and response[field] is not None:
+                result[field] = response[field].isoformat()
 
-        if 'stopTime' in response:
-            result['stopTime'] = response['stopTime'].isoformat()
-
-        if 'statusMessage' in response:
-            result['statusMessage'] = response['statusMessage']
-
-        if 'failureReason' in response:
-            result['failureReason'] = response['failureReason']
-
-        if 'workflowVersionName' in response:
-            result['workflowVersionName'] = response['workflowVersionName']
+        # Handle optional string fields
+        for field in ['statusMessage', 'failureReason', 'workflowVersionName']:
+            if field in response:
+                result[field] = response[field]
 
         return result
+    except botocore.exceptions.ClientError as e:
+        error_message = f'AWS error getting run {run_id}: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
     except botocore.exceptions.BotoCoreError as e:
         error_message = f'AWS error getting run {run_id}: {str(e)}'
         logger.error(error_message)
