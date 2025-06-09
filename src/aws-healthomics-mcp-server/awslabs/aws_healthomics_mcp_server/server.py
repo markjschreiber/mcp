@@ -15,7 +15,6 @@
 """awslabs aws-healthomics MCP Server implementation."""
 
 from awslabs.aws_healthomics_mcp_server.tools.helper_tools import (
-    generate_parameter_template,
     get_supported_regions,
     package_workflow,
     validate_workflow,
@@ -76,7 +75,6 @@ This MCP server provides tools for creating, managing, and analyzing genomic wor
 ### Helper Tools
 - **PackageWorkflow**: Package workflow definition files into a base64-encoded ZIP
 - **ValidateWorkflow**: Validate workflow syntax
-- **GenerateParameterTemplate**: Generate parameter template from workflow
 - **GetSupportedRegions**: Get the list of AWS regions where HealthOmics is available
 
 ## Service Availability
@@ -113,7 +111,6 @@ mcp.tool(name='DiagnoseRunFailure')(diagnose_run_failure)
 # Register helper tools
 mcp.tool(name='PackageWorkflow')(package_workflow)
 mcp.tool(name='ValidateWorkflow')(validate_workflow)
-mcp.tool(name='GenerateParameterTemplate')(generate_parameter_template)
 mcp.tool(name='GetSupportedRegions')(get_supported_regions)
 
 

@@ -26,10 +26,7 @@ from awslabs.aws_healthomics_mcp_server.utils.aws_utils import (
     encode_to_base64,
     get_aws_session,
 )
-from awslabs.aws_healthomics_mcp_server.utils.wdl_utils import (
-    extract_wdl_inputs,
-    validate_wdl,
-)
+from awslabs.aws_healthomics_mcp_server.utils.wdl_utils import validate_wdl
 from loguru import logger
 from mcp.server.fastmcp import Context
 from pydantic import Field
@@ -127,56 +124,6 @@ async def validate_workflow(
             }
     except Exception as e:
         error_message = f'Error validating workflow: {str(e)}'
-        logger.error(error_message)
-        await ctx.error(error_message)
-        raise
-
-
-async def generate_parameter_template(
-    ctx: Context,
-    workflow_content: str = Field(
-        ...,
-        description='Content of the workflow file',
-    ),
-    workflow_type: str = Field(
-        'WDL',
-        description='Type of workflow (WDL, CWL, or Nextflow)',
-    ),
-) -> Dict[str, Any]:
-    """Generate parameter template from workflow.
-
-    Args:
-        ctx: MCP context for error reporting
-        workflow_content: Content of the workflow file
-        workflow_type: Type of workflow (WDL, CWL, or Nextflow)
-
-    Returns:
-        Dictionary containing the generated parameter template
-    """
-    # Validate workflow type
-    if workflow_type not in WORKFLOW_TYPES:
-        error_message = ERROR_INVALID_WORKFLOW_TYPE.format(WORKFLOW_TYPES)
-        logger.error(error_message)
-        await ctx.error(error_message)
-        raise ValueError(error_message)
-
-    try:
-        if workflow_type == WORKFLOW_TYPE_WDL:
-            parameter_template = extract_wdl_inputs(workflow_content)
-
-            return {
-                'parameterTemplate': parameter_template,
-            }
-        else:
-            # For other workflow types, we don't have built-in parameter extraction yet
-            error_message = (
-                f'Parameter template generation for {workflow_type} is not implemented yet.'
-            )
-            logger.error(error_message)
-            await ctx.error(error_message)
-            raise NotImplementedError(error_message)
-    except Exception as e:
-        error_message = f'Error generating parameter template: {str(e)}'
         logger.error(error_message)
         await ctx.error(error_message)
         raise

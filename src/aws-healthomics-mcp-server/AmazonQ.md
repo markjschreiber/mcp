@@ -345,24 +345,6 @@ async def validate_workflow(
     """
 ```
 
-#### `generate_parameter_template`
-```python
-@mcp.tool(name='GenerateParameterTemplate')
-async def generate_parameter_template(
-    workflow_content: str,
-    workflow_type: str = "WDL",
-) -> Dict[str, Any]:
-    """Generate parameter template from workflow.
-
-    Args:
-        workflow_content: Content of the workflow file
-        workflow_type: Type of workflow (WDL, CWL, or Nextflow)
-
-    Returns:
-        Dictionary containing the generated parameter template
-    """
-```
-
 ## Configuration
 
 The server will support the following configuration options through environment variables:
