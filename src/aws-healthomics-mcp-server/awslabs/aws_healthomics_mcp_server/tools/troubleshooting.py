@@ -18,6 +18,10 @@ import botocore
 import botocore.exceptions
 import os
 from awslabs.aws_healthomics_mcp_server.consts import DEFAULT_REGION
+from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import (
+    get_run_engine_logs,
+    get_task_logs,
+)
 from awslabs.aws_healthomics_mcp_server.utils.aws_utils import get_aws_session
 from loguru import logger
 from mcp.server.fastmcp import Context
@@ -40,21 +44,6 @@ def get_omics_client():
         raise
 
 
-def get_logs_client():
-    """Get an AWS CloudWatch Logs client.
-
-    Returns:
-        boto3.client: Configured CloudWatch Logs client
-    """
-    region = os.environ.get('AWS_REGION', DEFAULT_REGION)
-    session = get_aws_session(region)
-    try:
-        return session.client('logs')
-    except Exception as e:
-        logger.error(f'Failed to create CloudWatch Logs client: {str(e)}')
-        raise
-
-
 async def diagnose_run_failure(
     ctx: Context,
     run_id: str = Field(
@@ -72,7 +61,6 @@ async def diagnose_run_failure(
         Dictionary containing diagnostic information
     """
     omics_client = get_omics_client()
-    logs_client = get_logs_client()
 
     try:
         # Get run details
@@ -88,22 +76,20 @@ async def diagnose_run_failure(
         # Get failure reason
         failure_reason = run_response.get('failureReason', 'No failure reason provided')
 
-        # Get engine logs
-        log_group_name = '/aws/omics/WorkflowLog'
-        engine_log_stream = f'run/{run_id}/engine'
-
+        # Get engine logs using the workflow_analysis function
         try:
-            engine_logs_response = logs_client.get_log_events(
-                logGroupName=log_group_name,
-                logStreamName=engine_log_stream,
+            engine_logs_response = await get_run_engine_logs(
+                ctx=ctx,
+                run_id=run_id,
                 limit=100,
-                startFromHead=False,  # Get the most recent logs
+                start_from_head=False,  # Get the most recent logs
             )
 
+            # Extract just the messages for backward compatibility
             engine_logs = [
                 event.get('message', '') for event in engine_logs_response.get('events', [])
             ]
-        except botocore.exceptions.BotoCoreError as e:
+        except Exception as e:
             error_message = f'Error retrieving engine logs: {str(e)}'
             logger.error(error_message)
             engine_logs = [error_message]
@@ -120,20 +106,21 @@ async def diagnose_run_failure(
             task_id = task.get('taskId')
             task_name = task.get('name')
 
-            # Get task logs
+            # Get task logs using the workflow_analysis function
             try:
-                task_log_stream = f'run/{run_id}/task/{task_id}'
-                task_logs_response = logs_client.get_log_events(
-                    logGroupName=log_group_name,
-                    logStreamName=task_log_stream,
+                task_logs_response = await get_task_logs(
+                    ctx=ctx,
+                    run_id=run_id,
+                    task_id=task_id,
                     limit=50,
-                    startFromHead=False,  # Get the most recent logs
+                    start_from_head=False,  # Get the most recent logs
                 )
 
+                # Extract just the messages for backward compatibility
                 task_logs = [
                     event.get('message', '') for event in task_logs_response.get('events', [])
                 ]
-            except botocore.exceptions.BotoCoreError as e:
+            except Exception as e:
                 error_message = f'Error retrieving task logs: {str(e)}'
                 logger.error(error_message)
                 task_logs = [error_message]

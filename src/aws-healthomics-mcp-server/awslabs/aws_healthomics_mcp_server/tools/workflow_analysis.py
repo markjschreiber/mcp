@@ -147,6 +147,7 @@ async def _get_logs_from_stream(
     end_time: Optional[str] = None,
     limit: int = 100,
     next_token: Optional[str] = None,
+    start_from_head: bool = True,
 ) -> Dict[str, Any]:
     """Helper function to retrieve logs from a specific CloudWatch log stream.
 
@@ -158,6 +159,7 @@ async def _get_logs_from_stream(
         end_time: Optional end time for log retrieval (ISO format)
         limit: Maximum number of log events to return
         next_token: Token for pagination
+        start_from_head: Whether to start from the beginning (True) or end (False) of the log stream
 
     Returns:
         Dictionary containing log events and next token if available
@@ -168,7 +170,7 @@ async def _get_logs_from_stream(
         'logGroupName': log_group_name,
         'logStreamName': log_stream_name,
         'limit': limit,
-        'startFromHead': True,
+        'startFromHead': start_from_head,
     }
 
     if next_token:
@@ -225,6 +227,10 @@ async def get_run_logs(
         None,
         description='Token for pagination from a previous response',
     ),
+    start_from_head: bool = Field(
+        True,
+        description='Whether to start from the beginning (True) or end (False) of the log stream',
+    ),
 ) -> Dict[str, Any]:
     """Retrieve high-level run logs that show workflow execution events.
 
@@ -242,6 +248,7 @@ async def get_run_logs(
         end_time: Optional end time for log retrieval (ISO format)
         limit: Maximum number of log events to return (default: 100)
         next_token: Token for pagination from a previous response
+        start_from_head: Whether to start from the beginning (True) or end (False) of the log stream
 
     Returns:
         Dictionary containing log events and next token if available
@@ -252,7 +259,14 @@ async def get_run_logs(
 
     try:
         return await _get_logs_from_stream(
-            client, log_group_name, log_stream_name, start_time, end_time, limit, next_token
+            client,
+            log_group_name,
+            log_stream_name,
+            start_time,
+            end_time,
+            limit,
+            next_token,
+            start_from_head,
         )
     except ValueError as e:
         error_message = f'Invalid timestamp format: {str(e)}'
@@ -299,6 +313,10 @@ async def get_run_manifest_logs(
         None,
         description='Token for pagination from a previous response',
     ),
+    start_from_head: bool = Field(
+        True,
+        description='Whether to start from the beginning (True) or end (False) of the log stream',
+    ),
 ) -> Dict[str, Any]:
     """Retrieve run manifest logs produced when a workflow completes or fails.
 
@@ -316,6 +334,7 @@ async def get_run_manifest_logs(
         end_time: Optional end time for log retrieval (ISO format)
         limit: Maximum number of log events to return (default: 100)
         next_token: Token for pagination from a previous response
+        start_from_head: Whether to start from the beginning (True) or end (False) of the log stream
 
     Returns:
         Dictionary containing log events and next token if available
@@ -325,7 +344,14 @@ async def get_run_manifest_logs(
     log_stream_name = f'manifest/run/{run_id}/{run_uuid}' if run_uuid else f'manifest/run/{run_id}'
     try:
         return await _get_logs_from_stream(
-            client, log_group_name, log_stream_name, start_time, end_time, limit, next_token
+            client,
+            log_group_name,
+            log_stream_name,
+            start_time,
+            end_time,
+            limit,
+            next_token,
+            start_from_head,
         )
     except ValueError as e:
         error_message = f'Invalid timestamp format: {str(e)}'
@@ -368,6 +394,10 @@ async def get_run_engine_logs(
         None,
         description='Token for pagination from a previous response',
     ),
+    start_from_head: bool = Field(
+        True,
+        description='Whether to start from the beginning (True) or end (False) of the log stream',
+    ),
 ) -> Dict[str, Any]:
     """Retrieve engine logs containing STDOUT and STDERR from the workflow engine process.
 
@@ -384,6 +414,7 @@ async def get_run_engine_logs(
         end_time: Optional end time for log retrieval (ISO format)
         limit: Maximum number of log events to return (default: 100)
         next_token: Token for pagination from a previous response
+        start_from_head: Whether to start from the beginning (True) or end (False) of the log stream
 
     Returns:
         Dictionary containing log events and next token if available
@@ -394,7 +425,14 @@ async def get_run_engine_logs(
 
     try:
         return await _get_logs_from_stream(
-            client, log_group_name, log_stream_name, start_time, end_time, limit, next_token
+            client,
+            log_group_name,
+            log_stream_name,
+            start_time,
+            end_time,
+            limit,
+            next_token,
+            start_from_head,
         )
     except ValueError as e:
         error_message = f'Invalid timestamp format: {str(e)}'
@@ -441,6 +479,10 @@ async def get_task_logs(
         None,
         description='Token for pagination from a previous response',
     ),
+    start_from_head: bool = Field(
+        True,
+        description='Whether to start from the beginning (True) or end (False) of the log stream',
+    ),
 ) -> Dict[str, Any]:
     """Retrieve logs for a specific workflow task containing STDOUT and STDERR.
 
@@ -457,6 +499,7 @@ async def get_task_logs(
         end_time: Optional end time for log retrieval (ISO format)
         limit: Maximum number of log events to return (default: 100)
         next_token: Token for pagination from a previous response
+        start_from_head: Whether to start from the beginning (True) or end (False) of the log stream
 
     Returns:
         Dictionary containing log events and next token if available
@@ -467,7 +510,14 @@ async def get_task_logs(
 
     try:
         return await _get_logs_from_stream(
-            client, log_group_name, log_stream_name, start_time, end_time, limit, next_token
+            client,
+            log_group_name,
+            log_stream_name,
+            start_time,
+            end_time,
+            limit,
+            next_token,
+            start_from_head,
         )
     except ValueError as e:
         error_message = f'Invalid timestamp format: {str(e)}'
