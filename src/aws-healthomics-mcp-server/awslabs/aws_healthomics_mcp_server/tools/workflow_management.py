@@ -88,7 +88,11 @@ async def list_workflows(
                     'id': workflow.get('id'),
                     'arn': workflow.get('arn'),
                     'name': workflow.get('name'),
+                    'description': workflow.get('description'),
                     'status': workflow.get('status'),
+                    'parameters': workflow.get('parameters'),
+                    'storageType': workflow.get('storageType'),
+                    'storageCapacity': workflow.get('storageCapacity'),
                     'type': workflow.get('type'),
                     'creationTime': workflow.get('creationTime').isoformat()
                     if workflow.get('creationTime')

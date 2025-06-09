@@ -20,12 +20,12 @@ from awslabs.aws_healthomics_mcp_server.consts import (
 )
 from datetime import datetime
 from enum import Enum
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 from typing import List, Optional
 
 
 class WorkflowType(str, Enum):
-    """Enum for workflow types."""
+    """Enum for workflow languages."""
 
     WDL = 'WDL'
     NEXTFLOW = 'NEXTFLOW'
@@ -69,9 +69,12 @@ class WorkflowSummary(BaseModel):
 
     id: str
     arn: str
-    name: str
+    name: Optional[str] = None
+    description: Optional[str] = None
     status: str
     type: str
+    storageType: Optional[str] = None
+    storageCapacity: Optional[int] = None
     creationTime: datetime
 
 
@@ -87,7 +90,8 @@ class RunSummary(BaseModel):
 
     id: str
     arn: str
-    name: str
+    name: Optional[str] = None
+    parameters: Optional[dict] = None
     status: str
     workflowId: str
     workflowType: str
@@ -142,10 +146,11 @@ class StorageRequest(BaseModel):
     storageType: StorageType
     storageCapacity: Optional[int] = None
 
-    @validator('storageCapacity')
-    def validate_storage_capacity(cls, v, values):
+    @field_validator('storageCapacity')
+    @classmethod
+    def validate_storage_capacity(cls, v, info):
         """Validate storage capacity."""
-        if values.get('storageType') == STORAGE_TYPE_STATIC and v is None:
+        if info.data.get('storageType') == STORAGE_TYPE_STATIC and v is None:
             raise ValueError(ERROR_STATIC_STORAGE_REQUIRES_CAPACITY)
         return v
 
