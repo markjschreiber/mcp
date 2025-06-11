@@ -226,12 +226,12 @@ async def test_get_workflow_success():
 
 @pytest.mark.asyncio
 async def test_get_workflow_with_export():
-    """Test workflow retrieval with export type."""
-    # Mock response data
+    """Test workflow retrieval with export definition."""
+    # Mock response data with presigned URL (as returned by AWS API)
     mock_response = {
         'id': 'wfl-12345',
         'name': 'test-workflow',
-        'definition': 'workflow test { ... }',
+        'definition': 'https://s3.amazonaws.com/bucket/workflow-definition.zip?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=...',
     }
 
     # Mock context and client
@@ -248,8 +248,46 @@ async def test_get_workflow_with_export():
     # Verify export parameter was passed
     mock_client.get_workflow.assert_called_once_with(id='wfl-12345', export='DEFINITION')
 
-    # Verify definition was included in result
-    assert result['definition'] == 'workflow test { ... }'
+    # Verify presigned URL was included in result
+    assert result['definition'].startswith('https://s3.amazonaws.com/')
+    assert 'X-Amz-Algorithm' in result['definition']
+
+
+@pytest.mark.asyncio
+async def test_get_workflow_without_export():
+    """Test workflow retrieval without export definition."""
+    # Mock response data without definition field (normal response)
+    creation_time = datetime.now(timezone.utc)
+    mock_response = {
+        'id': 'wfl-12345',
+        'arn': 'arn:aws:omics:us-east-1:123456789012:workflow/wfl-12345',
+        'name': 'test-workflow',
+        'status': 'ACTIVE',
+        'type': 'WDL',
+        'description': 'Test workflow description',
+        'parameterTemplate': {'param1': {'type': 'string'}},
+        'creationTime': creation_time,
+    }
+
+    # Mock context and client
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.get_workflow.return_value = mock_response
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_management.get_omics_client',
+        return_value=mock_client,
+    ):
+        result = await get_workflow(ctx=mock_ctx, workflow_id='wfl-12345', export_definition=False)
+
+    # Verify export parameter was NOT passed
+    mock_client.get_workflow.assert_called_once_with(id='wfl-12345')
+
+    # Verify no definition field in result
+    assert 'definition' not in result
+
+    # Verify other fields are present
+    assert result['parameterTemplate'] == {'param1': {'type': 'string'}}
 
 
 @pytest.mark.asyncio

@@ -197,7 +197,7 @@ async def get_workflow(
     ),
     export_definition: bool = Field(
         False,
-        description='Whether to include the workflow definition in the response',
+        description='Whether to include a presigned URL for downloading the workflow definition ZIP file',
     ),
 ) -> Dict[str, Any]:
     """Get details about a specific workflow.
@@ -205,10 +205,11 @@ async def get_workflow(
     Args:
         ctx: MCP context for error reporting
         workflow_id: ID of the workflow to retrieve
-        export_definition: Whether to include the workflow definition in the response
+        export_definition: Whether to include a presigned URL for downloading the workflow definition ZIP file
 
     Returns:
-        Dictionary containing workflow details including parameter template
+        Dictionary containing workflow details. When export_definition=True, includes a 'definition'
+        field with a presigned URL for downloading the workflow definition ZIP file.
     """
     client = get_omics_client()
 
