@@ -216,7 +216,7 @@ async def get_workflow(
     params = {'id': workflow_id}
 
     if export_definition:
-        params['export'] = 'DEFINITION'
+        params['export'] = ['DEFINITION']
 
     try:
         response = client.get_workflow(**params)

@@ -248,7 +248,7 @@ async def test_get_workflow_with_export():
         result = await get_workflow(ctx=mock_ctx, workflow_id='wfl-12345', export_definition=True)
 
     # Verify export parameter was passed
-    mock_client.get_workflow.assert_called_once_with(id='wfl-12345', export='DEFINITION')
+    mock_client.get_workflow.assert_called_once_with(id='wfl-12345', export=['DEFINITION'])
 
     # Verify presigned URL was included in result
     assert result['definition'].startswith('https://s3.amazonaws.com/')
