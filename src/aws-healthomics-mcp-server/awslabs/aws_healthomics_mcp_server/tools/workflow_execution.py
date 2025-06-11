@@ -30,10 +30,89 @@ from awslabs.aws_healthomics_mcp_server.consts import (
 )
 from awslabs.aws_healthomics_mcp_server.utils.aws_utils import get_aws_session
 from awslabs.aws_healthomics_mcp_server.utils.s3_utils import ensure_s3_uri_ends_with_slash
+from datetime import datetime
 from loguru import logger
 from mcp.server.fastmcp import Context
 from pydantic import Field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+
+
+def parse_iso_datetime(iso_string: str) -> datetime:
+    """Parse ISO datetime string to datetime object.
+
+    Args:
+        iso_string: ISO format datetime string
+
+    Returns:
+        datetime object
+
+    Raises:
+        ValueError: If the datetime string is invalid
+    """
+    try:
+        # Handle both with and without timezone info
+        if iso_string.endswith('Z'):
+            iso_string = iso_string[:-1] + '+00:00'
+        elif '+' not in iso_string and iso_string.count(':') == 2:
+            # Add timezone if missing
+            iso_string += '+00:00'
+        return datetime.fromisoformat(iso_string)
+    except ValueError as e:
+        raise ValueError(f"Invalid datetime format '{iso_string}': {str(e)}")
+
+
+def filter_runs_by_creation_time(
+    runs: List[Dict[str, Any]],
+    created_after: Optional[str] = None,
+    created_before: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Filter runs by creation time.
+
+    Args:
+        runs: List of run dictionaries
+        created_after: ISO datetime string for filtering runs created after this time
+        created_before: ISO datetime string for filtering runs created before this time
+
+    Returns:
+        Filtered list of runs
+    """
+    if not created_after and not created_before:
+        return runs
+
+    filtered_runs = []
+
+    # Parse filter datetimes
+    after_dt = None
+    before_dt = None
+
+    if created_after:
+        after_dt = parse_iso_datetime(created_after)
+    if created_before:
+        before_dt = parse_iso_datetime(created_before)
+
+    for run in runs:
+        creation_time_str = run.get('creationTime')
+        if not creation_time_str:
+            continue
+
+        try:
+            creation_time = parse_iso_datetime(creation_time_str)
+
+            # Apply filters
+            if after_dt and creation_time <= after_dt:
+                continue
+            if before_dt and creation_time >= before_dt:
+                continue
+
+            filtered_runs.append(run)
+        except ValueError:
+            # Skip runs with invalid creation times
+            logger.warning(
+                f'Skipping run {run.get("id")} with invalid creation time: {creation_time_str}'
+            )
+            continue
+
+    return filtered_runs
 
 
 def get_omics_client():
@@ -237,51 +316,120 @@ async def list_runs(
         await ctx.error(error_message)
         raise ValueError(error_message)
 
-    params: dict[str, Any] = {'maxResults': max_results}
-
-    if next_token:
-        params['startingToken'] = next_token
-
-    if status:
-        params['status'] = status
-
+    # Validate datetime filters
     if created_after:
-        params['createdAfter'] = created_after
+        try:
+            parse_iso_datetime(created_after)
+        except ValueError as e:
+            error_message = f'Invalid created_after datetime: {str(e)}'
+            logger.error(error_message)
+            await ctx.error(error_message)
+            raise ValueError(error_message)
 
     if created_before:
-        params['createdBefore'] = created_before
+        try:
+            parse_iso_datetime(created_before)
+        except ValueError as e:
+            error_message = f'Invalid created_before datetime: {str(e)}'
+            logger.error(error_message)
+            await ctx.error(error_message)
+            raise ValueError(error_message)
+
+    # Determine if we need client-side filtering
+    needs_filtering = created_after or created_before
 
     try:
-        response = client.list_runs(**params)
+        all_runs = []
+        current_token = next_token
 
-        # Transform the response to a more user-friendly format
-        runs = []
-        for run in response.get('items', []):
-            run_info = {
-                'id': run.get('id'),
-                'arn': run.get('arn'),
-                'name': run.get('name'),
-                'status': run.get('status'),
-                'workflowId': run.get('workflowId'),
-                'workflowType': run.get('workflowType'),
-                'creationTime': run.get('creationTime').isoformat()
-                if run.get('creationTime')
-                else None,
-            }
+        # If we need filtering, collect more runs to reduce API calls
+        # Use a larger batch size when filtering
+        batch_size = 100 if needs_filtering else max_results
 
-            if 'startTime' in run and run['startTime'] is not None:
-                run_info['startTime'] = run['startTime'].isoformat()
+        while True:
+            params: dict[str, Any] = {'maxResults': batch_size}
 
-            if 'stopTime' in run and run['stopTime'] is not None:
-                run_info['stopTime'] = run['stopTime'].isoformat()
+            if current_token:
+                params['startingToken'] = current_token
 
-            runs.append(run_info)
+            if status:
+                params['status'] = status
 
-        result = {'runs': runs}
-        if 'nextToken' in response:
-            result['nextToken'] = response['nextToken']
+            response = client.list_runs(**params)
 
-        return result
+            # Transform the response to a more user-friendly format
+            batch_runs = []
+            for run in response.get('items', []):
+                run_info = {
+                    'id': run.get('id'),
+                    'arn': run.get('arn'),
+                    'name': run.get('name'),
+                    'status': run.get('status'),
+                    'workflowId': run.get('workflowId'),
+                    'workflowType': run.get('workflowType'),
+                    'creationTime': run.get('creationTime').isoformat()
+                    if run.get('creationTime')
+                    else None,
+                }
+
+                if 'startTime' in run and run['startTime'] is not None:
+                    run_info['startTime'] = run['startTime'].isoformat()
+
+                if 'stopTime' in run and run['stopTime'] is not None:
+                    run_info['stopTime'] = run['stopTime'].isoformat()
+
+                batch_runs.append(run_info)
+
+            all_runs.extend(batch_runs)
+
+            # Check if we have more pages
+            current_token = response.get('nextToken')
+
+            # If no filtering needed, return first batch
+            if not needs_filtering:
+                result = {'runs': all_runs}
+                if current_token:
+                    result['nextToken'] = current_token
+                return result
+
+            # If filtering, continue until we have enough results or no more pages
+            if not current_token:
+                break
+
+            # If we have enough filtered results, we can stop early
+            if needs_filtering:
+                filtered_so_far = filter_runs_by_creation_time(
+                    all_runs, created_after, created_before
+                )
+                if len(filtered_so_far) >= max_results:
+                    break
+
+        # Apply client-side filtering if needed
+        if needs_filtering:
+            filtered_runs = filter_runs_by_creation_time(all_runs, created_after, created_before)
+
+            # Apply max_results limit to filtered results
+            result_runs = filtered_runs[:max_results]
+
+            result = {'runs': result_runs}
+
+            # If we have more filtered results than max_results, we could implement
+            # a custom pagination token, but for simplicity we'll omit nextToken
+            # when client-side filtering is applied
+            if len(filtered_runs) > max_results:
+                logger.info(
+                    f'Client-side filtering returned {len(filtered_runs)} results, '
+                    f'truncated to {max_results}. Pagination not supported with date filters.'
+                )
+
+            return result
+        else:
+            # No filtering needed, return all collected runs
+            result = {'runs': all_runs}
+            if current_token:
+                result['nextToken'] = current_token
+            return result
+
     except botocore.exceptions.ClientError as e:
         error_message = f'AWS error listing runs: {str(e)}'
         logger.error(error_message)

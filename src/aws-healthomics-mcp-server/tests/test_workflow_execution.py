@@ -22,7 +22,7 @@ from awslabs.aws_healthomics_mcp_server.tools.workflow_execution import (
     list_runs,
     start_run,
 )
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 
@@ -326,7 +326,7 @@ async def test_list_runs_success():
 
 @pytest.mark.asyncio
 async def test_list_runs_with_filters():
-    """Test listing runs with various filters."""
+    """Test listing runs with status filter (no date filters)."""
     mock_response = {'items': []}
 
     # Mock context and client
@@ -343,17 +343,15 @@ async def test_list_runs_with_filters():
             max_results=25,
             next_token='previous-token',
             status='COMPLETED',
-            created_after='2023-01-01T00:00:00Z',
-            created_before='2023-12-31T23:59:59Z',
+            created_after=None,
+            created_before=None,
         )
 
-    # Verify client was called with all filters
+    # Verify client was called with status filter only (no date filters)
     mock_client.list_runs.assert_called_once_with(
         maxResults=25,
         startingToken='previous-token',
         status='COMPLETED',
-        createdAfter='2023-01-01T00:00:00Z',
-        createdBefore='2023-12-31T23:59:59Z',
     )
 
 
@@ -602,6 +600,381 @@ async def test_list_runs_default_parameters():
 
     # Verify client was called with default parameters only
     mock_client.list_runs.assert_called_once_with(maxResults=10)
+
+
+@pytest.mark.asyncio
+async def test_list_runs_with_date_filters():
+    """Test listing runs with client-side date filtering."""
+    # Create test data with different creation times
+    base_time = datetime(2023, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+
+    mock_response = {
+        'items': [
+            {
+                'id': 'run-1',
+                'name': 'old-run',
+                'status': 'COMPLETED',
+                'workflowId': 'wfl-1',
+                'workflowType': 'WDL',
+                'creationTime': base_time - timedelta(days=10),  # 2023-06-05
+            },
+            {
+                'id': 'run-2',
+                'name': 'middle-run',
+                'status': 'COMPLETED',
+                'workflowId': 'wfl-2',
+                'workflowType': 'WDL',
+                'creationTime': base_time,  # 2023-06-15
+            },
+            {
+                'id': 'run-3',
+                'name': 'new-run',
+                'status': 'COMPLETED',
+                'workflowId': 'wfl-3',
+                'workflowType': 'WDL',
+                'creationTime': base_time + timedelta(days=10),  # 2023-06-25
+            },
+        ]
+    }
+
+    # Mock context and client
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.list_runs.return_value = mock_response
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_execution.get_omics_client',
+        return_value=mock_client,
+    ):
+        # Test filtering with created_after
+        result = await list_runs(
+            ctx=mock_ctx,
+            max_results=10,
+            next_token=None,
+            status=None,
+            created_after='2023-06-10T00:00:00Z',
+            created_before=None,
+        )
+
+    # Should return runs created after 2023-06-10 (run-2 and run-3)
+    assert len(result['runs']) == 2
+    assert result['runs'][0]['id'] == 'run-2'
+    assert result['runs'][1]['id'] == 'run-3'
+
+    # Verify client was called with larger batch size for filtering
+    mock_client.list_runs.assert_called_once_with(maxResults=100)
+
+
+@pytest.mark.asyncio
+async def test_list_runs_with_created_before_filter():
+    """Test listing runs with created_before filter."""
+    base_time = datetime(2023, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+
+    mock_response = {
+        'items': [
+            {
+                'id': 'run-1',
+                'name': 'old-run',
+                'status': 'COMPLETED',
+                'workflowId': 'wfl-1',
+                'workflowType': 'WDL',
+                'creationTime': base_time - timedelta(days=10),  # 2023-06-05
+            },
+            {
+                'id': 'run-2',
+                'name': 'middle-run',
+                'status': 'COMPLETED',
+                'workflowId': 'wfl-2',
+                'workflowType': 'WDL',
+                'creationTime': base_time,  # 2023-06-15
+            },
+            {
+                'id': 'run-3',
+                'name': 'new-run',
+                'status': 'COMPLETED',
+                'workflowId': 'wfl-3',
+                'workflowType': 'WDL',
+                'creationTime': base_time + timedelta(days=10),  # 2023-06-25
+            },
+        ]
+    }
+
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.list_runs.return_value = mock_response
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_execution.get_omics_client',
+        return_value=mock_client,
+    ):
+        # Test filtering with created_before
+        result = await list_runs(
+            ctx=mock_ctx,
+            max_results=10,
+            next_token=None,
+            status=None,
+            created_after=None,
+            created_before='2023-06-20T00:00:00Z',
+        )
+
+    # Should return runs created before 2023-06-20 (run-1 and run-2)
+    assert len(result['runs']) == 2
+    assert result['runs'][0]['id'] == 'run-1'
+    assert result['runs'][1]['id'] == 'run-2'
+
+
+@pytest.mark.asyncio
+async def test_list_runs_with_both_date_filters():
+    """Test listing runs with both created_after and created_before filters."""
+    base_time = datetime(2023, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+
+    mock_response = {
+        'items': [
+            {
+                'id': 'run-1',
+                'name': 'old-run',
+                'status': 'COMPLETED',
+                'workflowId': 'wfl-1',
+                'workflowType': 'WDL',
+                'creationTime': base_time - timedelta(days=10),  # 2023-06-05
+            },
+            {
+                'id': 'run-2',
+                'name': 'middle-run',
+                'status': 'COMPLETED',
+                'workflowId': 'wfl-2',
+                'workflowType': 'WDL',
+                'creationTime': base_time,  # 2023-06-15
+            },
+            {
+                'id': 'run-3',
+                'name': 'new-run',
+                'status': 'COMPLETED',
+                'workflowId': 'wfl-3',
+                'workflowType': 'WDL',
+                'creationTime': base_time + timedelta(days=10),  # 2023-06-25
+            },
+        ]
+    }
+
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.list_runs.return_value = mock_response
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_execution.get_omics_client',
+        return_value=mock_client,
+    ):
+        # Test filtering with both date filters
+        result = await list_runs(
+            ctx=mock_ctx,
+            max_results=10,
+            next_token=None,
+            status=None,
+            created_after='2023-06-10T00:00:00Z',
+            created_before='2023-06-20T00:00:00Z',
+        )
+
+    # Should return only run-2 (created between the two dates)
+    assert len(result['runs']) == 1
+    assert result['runs'][0]['id'] == 'run-2'
+
+
+@pytest.mark.asyncio
+async def test_list_runs_invalid_created_after():
+    """Test list_runs with invalid created_after datetime."""
+    mock_ctx = AsyncMock()
+
+    with pytest.raises(ValueError, match='Invalid created_after datetime'):
+        await list_runs(
+            ctx=mock_ctx,
+            max_results=10,
+            next_token=None,
+            status=None,
+            created_after='invalid-datetime',
+            created_before=None,
+        )
+
+    # Verify error was reported to context
+    mock_ctx.error.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_list_runs_invalid_created_before():
+    """Test list_runs with invalid created_before datetime."""
+    mock_ctx = AsyncMock()
+
+    with pytest.raises(ValueError, match='Invalid created_before datetime'):
+        await list_runs(
+            ctx=mock_ctx,
+            max_results=10,
+            next_token=None,
+            status=None,
+            created_after=None,
+            created_before='not-a-datetime',
+        )
+
+    # Verify error was reported to context
+    mock_ctx.error.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_list_runs_date_filter_no_matching_runs():
+    """Test date filtering when no runs match the criteria."""
+    base_time = datetime(2023, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+
+    mock_response = {
+        'items': [
+            {
+                'id': 'run-1',
+                'name': 'old-run',
+                'status': 'COMPLETED',
+                'workflowId': 'wfl-1',
+                'workflowType': 'WDL',
+                'creationTime': base_time - timedelta(days=10),  # 2023-06-05
+            },
+        ]
+    }
+
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.list_runs.return_value = mock_response
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_execution.get_omics_client',
+        return_value=mock_client,
+    ):
+        # Filter for runs after the only run's creation time
+        result = await list_runs(
+            ctx=mock_ctx,
+            max_results=10,
+            next_token=None,
+            status=None,
+            created_after='2023-06-10T00:00:00Z',
+            created_before=None,
+        )
+
+    # Should return empty list
+    assert len(result['runs']) == 0
+    assert 'nextToken' not in result
+
+
+@pytest.mark.asyncio
+async def test_list_runs_date_filter_with_missing_creation_time():
+    """Test date filtering when some runs have missing creation times."""
+    base_time = datetime(2023, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+
+    mock_response = {
+        'items': [
+            {
+                'id': 'run-1',
+                'name': 'run-with-time',
+                'status': 'COMPLETED',
+                'workflowId': 'wfl-1',
+                'workflowType': 'WDL',
+                'creationTime': base_time,
+            },
+            {
+                'id': 'run-2',
+                'name': 'run-without-time',
+                'status': 'COMPLETED',
+                'workflowId': 'wfl-2',
+                'workflowType': 'WDL',
+                # No creationTime field
+            },
+        ]
+    }
+
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.list_runs.return_value = mock_response
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_execution.get_omics_client',
+        return_value=mock_client,
+    ):
+        result = await list_runs(
+            ctx=mock_ctx,
+            max_results=10,
+            next_token=None,
+            status=None,
+            created_after='2023-06-10T00:00:00Z',
+            created_before=None,
+        )
+
+    # Should return only the run with a valid creation time
+    assert len(result['runs']) == 1
+    assert result['runs'][0]['id'] == 'run-1'
+
+
+@pytest.mark.asyncio
+async def test_parse_iso_datetime_various_formats():
+    """Test the parse_iso_datetime helper function with various formats."""
+    from awslabs.aws_healthomics_mcp_server.tools.workflow_execution import parse_iso_datetime
+
+    # Test various valid formats
+    dt1 = parse_iso_datetime('2023-06-15T12:00:00Z')
+    assert dt1.year == 2023
+    assert dt1.month == 6
+    assert dt1.day == 15
+
+    dt2 = parse_iso_datetime('2023-06-15T12:00:00+00:00')
+    assert dt2.year == 2023
+
+    dt3 = parse_iso_datetime('2023-06-15T12:00:00')
+    assert dt3.year == 2023
+
+    # Test invalid format
+    with pytest.raises(ValueError, match='Invalid datetime format'):
+        parse_iso_datetime('not-a-date')
+
+
+@pytest.mark.asyncio
+async def test_filter_runs_by_creation_time():
+    """Test the filter_runs_by_creation_time helper function."""
+    from awslabs.aws_healthomics_mcp_server.tools.workflow_execution import (
+        filter_runs_by_creation_time,
+    )
+
+    base_time = datetime(2023, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+
+    runs = [
+        {
+            'id': 'run-1',
+            'creationTime': (base_time - timedelta(days=10)).isoformat(),
+        },
+        {
+            'id': 'run-2',
+            'creationTime': base_time.isoformat(),
+        },
+        {
+            'id': 'run-3',
+            'creationTime': (base_time + timedelta(days=10)).isoformat(),
+        },
+    ]
+
+    # Test no filters
+    result = filter_runs_by_creation_time(runs)
+    assert len(result) == 3
+
+    # Test created_after filter
+    result = filter_runs_by_creation_time(runs, created_after='2023-06-10T00:00:00Z')
+    assert len(result) == 2
+    assert result[0]['id'] == 'run-2'
+    assert result[1]['id'] == 'run-3'
+
+    # Test created_before filter
+    result = filter_runs_by_creation_time(runs, created_before='2023-06-20T00:00:00Z')
+    assert len(result) == 2
+    assert result[0]['id'] == 'run-1'
+    assert result[1]['id'] == 'run-2'
+
+    # Test both filters
+    result = filter_runs_by_creation_time(
+        runs, created_after='2023-06-10T00:00:00Z', created_before='2023-06-20T00:00:00Z'
+    )
+    assert len(result) == 1
+    assert result[0]['id'] == 'run-2'
 
 
 @pytest.mark.asyncio
