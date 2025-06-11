@@ -16,17 +16,11 @@
 
 import botocore
 import botocore.exceptions
-from awslabs.aws_healthomics_mcp_server.consts import (
-    ERROR_INVALID_WORKFLOW_TYPE,
-    WORKFLOW_TYPE_WDL,
-    WORKFLOW_TYPES,
-)
 from awslabs.aws_healthomics_mcp_server.utils.aws_utils import (
     create_zip_file,
     encode_to_base64,
     get_aws_session,
 )
-from awslabs.aws_healthomics_mcp_server.utils.wdl_utils import validate_wdl
 from loguru import logger
 from mcp.server.fastmcp import Context
 from pydantic import Field
@@ -75,55 +69,6 @@ async def package_workflow(
         return base64_data
     except Exception as e:
         error_message = f'Error packaging workflow: {str(e)}'
-        logger.error(error_message)
-        await ctx.error(error_message)
-        raise
-
-
-async def validate_workflow(
-    ctx: Context,
-    workflow_content: str = Field(
-        ...,
-        description='Content of the workflow file',
-    ),
-    workflow_type: str = Field(
-        'WDL',
-        description='Type of workflow (WDL, CWL, or Nextflow)',
-    ),
-) -> Dict[str, Any]:
-    """Validate workflow syntax.
-
-    Args:
-        ctx: MCP context for error reporting
-        workflow_content: Content of the workflow file
-        workflow_type: Type of workflow (WDL, CWL, or Nextflow)
-
-    Returns:
-        Dictionary containing validation results
-    """
-    # Validate workflow type
-    if workflow_type not in WORKFLOW_TYPES:
-        error_message = ERROR_INVALID_WORKFLOW_TYPE.format(WORKFLOW_TYPES)
-        logger.error(error_message)
-        await ctx.error(error_message)
-        raise ValueError(error_message)
-
-    try:
-        if workflow_type == WORKFLOW_TYPE_WDL:
-            is_valid, error_message = validate_wdl(workflow_content)
-
-            return {
-                'isValid': is_valid,
-                'errorMessage': error_message if not is_valid else '',
-            }
-        else:
-            # For other workflow types, we don't have built-in validation yet
-            return {
-                'isValid': True,
-                'message': f'Validation for {workflow_type} is not implemented yet. The workflow is assumed to be valid.',
-            }
-    except Exception as e:
-        error_message = f'Error validating workflow: {str(e)}'
         logger.error(error_message)
         await ctx.error(error_message)
         raise

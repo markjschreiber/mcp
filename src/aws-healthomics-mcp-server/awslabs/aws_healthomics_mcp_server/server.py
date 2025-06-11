@@ -17,7 +17,6 @@
 from awslabs.aws_healthomics_mcp_server.tools.helper_tools import (
     get_supported_regions,
     package_workflow,
-    validate_workflow,
 )
 from awslabs.aws_healthomics_mcp_server.tools.troubleshooting import diagnose_run_failure
 from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import (
@@ -119,7 +118,6 @@ mcp.tool(name='DiagnoseRunFailure')(diagnose_run_failure)
 
 # Register helper tools
 mcp.tool(name='PackageWorkflow')(package_workflow)
-mcp.tool(name='ValidateWorkflow')(validate_workflow)
 mcp.tool(name='GetSupportedRegions')(get_supported_regions)
 
 
