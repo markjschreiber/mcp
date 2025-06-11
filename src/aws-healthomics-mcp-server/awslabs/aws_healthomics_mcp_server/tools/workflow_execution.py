@@ -461,7 +461,14 @@ async def get_run(
         run_id: ID of the run to retrieve
 
     Returns:
-        Dictionary containing run details
+        Dictionary containing run details including:
+        - Basic run information (id, arn, name, status)
+        - Workflow information (workflowId, workflowType, workflowVersionName)
+        - Timing information (creationTime, startTime, stopTime)
+        - Output locations (outputUri, runOutputUri)
+        - IAM role (roleArn)
+        - Run parameters and metadata
+        - Status messages and failure reasons (if applicable)
     """
     client = get_omics_client()
 
@@ -479,6 +486,8 @@ async def get_run(
             if response.get('creationTime')
             else None,
             'outputUri': response.get('outputUri'),
+            'roleArn': response.get('roleArn'),
+            'runOutputUri': response.get('runOutputUri'),
         }
 
         if 'parameters' in response:

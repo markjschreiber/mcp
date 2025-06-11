@@ -46,6 +46,8 @@ async def test_get_run_success():
         'startTime': start_time,
         'stopTime': stop_time,
         'outputUri': 's3://bucket/output/',
+        'roleArn': 'arn:aws:iam::123456789012:role/HealthOmicsRole',
+        'runOutputUri': 's3://bucket/run-output/',
         'parameters': {'param1': 'value1'},
         'uuid': 'abc-123-def-456',
         'statusMessage': 'Run completed successfully',
@@ -77,6 +79,8 @@ async def test_get_run_success():
     assert result['startTime'] == start_time.isoformat()
     assert result['stopTime'] == stop_time.isoformat()
     assert result['outputUri'] == 's3://bucket/output/'
+    assert result['roleArn'] == 'arn:aws:iam::123456789012:role/HealthOmicsRole'
+    assert result['runOutputUri'] == 's3://bucket/run-output/'
     assert result['parameters'] == {'param1': 'value1'}
     assert result['uuid'] == 'abc-123-def-456'
     assert result['statusMessage'] == 'Run completed successfully'
@@ -96,6 +100,8 @@ async def test_get_run_minimal_response():
         'workflowType': 'WDL',
         'creationTime': creation_time,
         'outputUri': 's3://bucket/output/',
+        'roleArn': 'arn:aws:iam::123456789012:role/HealthOmicsRole',
+        'runOutputUri': 's3://bucket/run-output/',
     }
 
     # Mock context and client
@@ -113,6 +119,8 @@ async def test_get_run_minimal_response():
     assert result['id'] == 'run-12345'
     assert result['status'] == 'QUEUED'
     assert result['creationTime'] == creation_time.isoformat()
+    assert result['roleArn'] == 'arn:aws:iam::123456789012:role/HealthOmicsRole'
+    assert result['runOutputUri'] == 's3://bucket/run-output/'
 
     # Verify optional fields are not present
     assert 'startTime' not in result
@@ -131,6 +139,8 @@ async def test_get_run_failed_status():
         'status': 'FAILED',
         'failureReason': 'Resource quota exceeded',
         'statusMessage': 'Run failed due to resource constraints',
+        'roleArn': 'arn:aws:iam::123456789012:role/HealthOmicsRole',
+        'runOutputUri': 's3://bucket/run-output/',
     }
 
     # Mock context and client
@@ -222,6 +232,8 @@ async def test_get_run_none_timestamps():
         'creationTime': None,
         'startTime': None,
         'stopTime': None,
+        'roleArn': 'arn:aws:iam::123456789012:role/HealthOmicsRole',
+        'runOutputUri': 's3://bucket/run-output/',
     }
 
     # Mock context and client
