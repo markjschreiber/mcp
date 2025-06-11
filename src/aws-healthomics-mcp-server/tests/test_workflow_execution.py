@@ -16,7 +16,12 @@
 
 import botocore.exceptions
 import pytest
-from awslabs.aws_healthomics_mcp_server.tools.workflow_execution import get_run, list_runs
+from awslabs.aws_healthomics_mcp_server.tools.workflow_execution import (
+    get_run,
+    list_run_tasks,
+    list_runs,
+    start_run,
+)
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -597,3 +602,336 @@ async def test_list_runs_default_parameters():
 
     # Verify client was called with default parameters only
     mock_client.list_runs.assert_called_once_with(maxResults=10)
+
+
+@pytest.mark.asyncio
+async def test_start_run_success():
+    """Test successful workflow run start."""
+    # Mock response data
+    mock_response = {
+        'id': 'run-12345',
+        'arn': 'arn:aws:omics:us-east-1:123456789012:run/run-12345',
+        'status': 'PENDING',
+        'name': 'test-run',
+        'workflowId': 'wfl-12345',
+    }
+
+    # Mock context and client
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.start_run.return_value = mock_response
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_execution.get_omics_client',
+        return_value=mock_client,
+    ):
+        result = await start_run(
+            mock_ctx,
+            workflow_id='wfl-12345',
+            role_arn='arn:aws:iam::123456789012:role/HealthOmicsRole',
+            name='test-run',
+            output_uri='s3://my-bucket/outputs/',
+            parameters={'param1': 'value1'},
+            workflow_version_name=None,
+            storage_type='DYNAMIC',
+            storage_capacity=None,
+            cache_id=None,
+            cache_behavior=None,
+        )
+
+    # Verify client was called correctly
+    mock_client.start_run.assert_called_once_with(
+        workflowId='wfl-12345',
+        roleArn='arn:aws:iam::123456789012:role/HealthOmicsRole',
+        name='test-run',
+        outputUri='s3://my-bucket/outputs/',
+        parameters={'param1': 'value1'},
+        storageType='DYNAMIC',
+    )
+
+    # Verify result contains expected fields
+    assert result['id'] == 'run-12345'
+    assert result['status'] == 'PENDING'
+    assert result['name'] == 'test-run'
+    assert result['workflowId'] == 'wfl-12345'
+
+
+@pytest.mark.asyncio
+async def test_start_run_with_static_storage():
+    """Test workflow run start with static storage."""
+    # Mock response data
+    mock_response = {
+        'id': 'run-12345',
+        'arn': 'arn:aws:omics:us-east-1:123456789012:run/run-12345',
+        'status': 'PENDING',
+        'name': 'test-run',
+        'workflowId': 'wfl-12345',
+    }
+
+    # Mock context and client
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.start_run.return_value = mock_response
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_execution.get_omics_client',
+        return_value=mock_client,
+    ):
+        await start_run(
+            mock_ctx,
+            workflow_id='wfl-12345',
+            role_arn='arn:aws:iam::123456789012:role/HealthOmicsRole',
+            name='test-run',
+            output_uri='s3://my-bucket/outputs/',
+            parameters={'param1': 'value1'},
+            workflow_version_name=None,
+            storage_type='STATIC',
+            storage_capacity=1000,
+            cache_id=None,
+            cache_behavior=None,
+        )
+
+    # Verify client was called with static storage parameters
+    mock_client.start_run.assert_called_once_with(
+        workflowId='wfl-12345',
+        roleArn='arn:aws:iam::123456789012:role/HealthOmicsRole',
+        name='test-run',
+        outputUri='s3://my-bucket/outputs/',
+        parameters={'param1': 'value1'},
+        storageType='STATIC',
+        storageCapacity=1000,
+    )
+
+
+@pytest.mark.asyncio
+async def test_start_run_static_without_capacity():
+    """Test workflow run start with static storage but no capacity."""
+    # Mock context
+    mock_ctx = AsyncMock()
+
+    with pytest.raises(ValueError, match='Storage capacity is required'):
+        await start_run(
+            mock_ctx,
+            workflow_id='wfl-12345',
+            role_arn='arn:aws:iam::123456789012:role/HealthOmicsRole',
+            name='test-run',
+            output_uri='s3://my-bucket/outputs/',
+            parameters={'param1': 'value1'},
+            workflow_version_name=None,
+            storage_type='STATIC',
+            storage_capacity=None,
+            cache_id=None,
+            cache_behavior=None,
+        )
+
+    # Verify error was reported to context
+    mock_ctx.error.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_start_run_with_cache():
+    """Test workflow run start with caching enabled."""
+    # Mock response data
+    mock_response = {
+        'id': 'run-12345',
+        'arn': 'arn:aws:omics:us-east-1:123456789012:run/run-12345',
+        'status': 'PENDING',
+        'name': 'test-run',
+        'workflowId': 'wfl-12345',
+    }
+
+    # Mock context and client
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.start_run.return_value = mock_response
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_execution.get_omics_client',
+        return_value=mock_client,
+    ):
+        await start_run(
+            mock_ctx,
+            workflow_id='wfl-12345',
+            role_arn='arn:aws:iam::123456789012:role/HealthOmicsRole',
+            name='test-run',
+            output_uri='s3://my-bucket/outputs/',
+            parameters={'param1': 'value1'},
+            workflow_version_name=None,
+            storage_type='DYNAMIC',
+            storage_capacity=None,
+            cache_id='cache-12345',
+            cache_behavior='CACHE_ALWAYS',
+        )
+
+    # Verify client was called with cache parameters
+    expected_call = mock_client.start_run.call_args[1]
+    assert expected_call['cacheId'] == 'cache-12345'
+    assert expected_call['cacheBehavior'] == 'CACHE_ALWAYS'
+
+
+@pytest.mark.asyncio
+async def test_start_run_boto_error():
+    """Test handling of BotoCoreError in start_run."""
+    # Mock context and client
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.start_run.side_effect = botocore.exceptions.BotoCoreError()
+
+    with (
+        patch(
+            'awslabs.aws_healthomics_mcp_server.tools.workflow_execution.get_omics_client',
+            return_value=mock_client,
+        ),
+        pytest.raises(botocore.exceptions.BotoCoreError),
+    ):
+        await start_run(
+            mock_ctx,
+            workflow_id='wfl-12345',
+            role_arn='arn:aws:iam::123456789012:role/HealthOmicsRole',
+            name='test-run',
+            output_uri='s3://my-bucket/outputs/',
+            parameters={'param1': 'value1'},
+            workflow_version_name=None,
+            storage_type='DYNAMIC',
+            storage_capacity=None,
+            cache_id=None,
+            cache_behavior=None,
+        )
+
+    # Verify error was reported to context
+    mock_ctx.error.assert_called_once()
+    assert 'AWS error starting run' in mock_ctx.error.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_list_run_tasks_success():
+    """Test successful listing of run tasks."""
+    # Mock response data
+    creation_time = datetime.now(timezone.utc)
+    start_time = creation_time
+    stop_time = datetime.now(timezone.utc)
+
+    mock_response = {
+        'items': [
+            {
+                'taskId': 'task-12345',
+                'status': 'COMPLETED',
+                'name': 'test-task',
+                'cpus': 2,
+                'memory': 4096,
+                'startTime': start_time,
+                'stopTime': stop_time,
+            },
+            {
+                'taskId': 'task-67890',
+                'status': 'RUNNING',
+                'name': 'test-task-2',
+                'cpus': 4,
+                'memory': 8192,
+                'startTime': start_time,
+            },
+        ],
+        'nextToken': 'next-token-123',
+    }
+
+    # Mock context and client
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.list_run_tasks.return_value = mock_response
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_execution.get_omics_client',
+        return_value=mock_client,
+    ):
+        result = await list_run_tasks(
+            mock_ctx,
+            run_id='run-12345',
+            max_results=10,
+            next_token=None,
+            status='COMPLETED',
+        )
+
+    # Verify client was called correctly
+    mock_client.list_run_tasks.assert_called_once_with(
+        id='run-12345',
+        maxResults=10,
+        status='COMPLETED',
+    )
+
+    # Verify result structure
+    assert 'tasks' in result
+    assert 'nextToken' in result
+    assert len(result['tasks']) == 2
+
+    # Verify first task
+    task1 = result['tasks'][0]
+    assert task1['taskId'] == 'task-12345'
+    assert task1['status'] == 'COMPLETED'
+    assert task1['name'] == 'test-task'
+    assert task1['cpus'] == 2
+    assert task1['memory'] == 4096
+    assert task1['startTime'] == start_time.isoformat()
+    assert task1['stopTime'] == stop_time.isoformat()
+
+    # Verify second task (no stopTime since it's still running)
+    task2 = result['tasks'][1]
+    assert task2['taskId'] == 'task-67890'
+    assert task2['status'] == 'RUNNING'
+    assert task2['startTime'] == start_time.isoformat()
+    assert 'stopTime' not in task2
+
+
+@pytest.mark.asyncio
+async def test_list_run_tasks_empty_response():
+    """Test listing run tasks with empty response."""
+    # Mock empty response
+    mock_response = {'items': []}
+
+    # Mock context and client
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.list_run_tasks.return_value = mock_response
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_execution.get_omics_client',
+        return_value=mock_client,
+    ):
+        result = await list_run_tasks(
+            mock_ctx,
+            run_id='run-12345',
+            max_results=10,
+            next_token=None,
+            status=None,
+        )
+
+    # Verify result structure
+    assert result['tasks'] == []
+    assert 'nextToken' not in result
+
+
+@pytest.mark.asyncio
+async def test_list_run_tasks_boto_error():
+    """Test handling of BotoCoreError in list_run_tasks."""
+    # Mock context and client
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.list_run_tasks.side_effect = botocore.exceptions.BotoCoreError()
+
+    with (
+        patch(
+            'awslabs.aws_healthomics_mcp_server.tools.workflow_execution.get_omics_client',
+            return_value=mock_client,
+        ),
+        pytest.raises(botocore.exceptions.BotoCoreError),
+    ):
+        await list_run_tasks(
+            mock_ctx,
+            run_id='run-12345',
+            max_results=10,
+            next_token=None,
+            status=None,
+        )
+
+    # Verify error was reported to context
+    mock_ctx.error.assert_called_once()
+    assert 'AWS error listing tasks for run' in mock_ctx.error.call_args[0][0]

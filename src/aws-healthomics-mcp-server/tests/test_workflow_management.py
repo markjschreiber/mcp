@@ -14,9 +14,12 @@
 
 """Unit tests for workflow management tools."""
 
+import base64
 import botocore.exceptions
 import pytest
 from awslabs.aws_healthomics_mcp_server.tools.workflow_management import (
+    create_workflow,
+    create_workflow_version,
     get_workflow,
     list_workflow_versions,
     list_workflows,
@@ -595,3 +598,355 @@ async def test_list_workflow_versions_general_exception(mock_omics_client, mock_
         # Verify error was reported to context
         mock_context.error.assert_called_once()
         assert 'Unexpected error listing workflow versions' in mock_context.error.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_create_workflow_success():
+    """Test successful workflow creation."""
+    # Mock response data
+    mock_response = {
+        'id': 'wfl-12345',
+        'arn': 'arn:aws:omics:us-east-1:123456789012:workflow/wfl-12345',
+        'status': 'ACTIVE',
+        'name': 'test-workflow',
+        'description': 'Test workflow description',
+    }
+
+    # Mock context and client
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.create_workflow.return_value = mock_response
+
+    # Create base64 encoded workflow definition
+    definition_zip_base64 = base64.b64encode(b'test workflow content').decode('utf-8')
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_management.get_omics_client',
+        return_value=mock_client,
+    ):
+        result = await create_workflow(
+            mock_ctx,
+            name='test-workflow',
+            definition_zip_base64=definition_zip_base64,
+            description='Test workflow description',
+            parameter_template={'param1': {'type': 'string'}},
+        )
+
+    # Verify client was called correctly
+    mock_client.create_workflow.assert_called_once_with(
+        name='test-workflow',
+        definitionZip=b'test workflow content',
+        description='Test workflow description',
+        parameterTemplate={'param1': {'type': 'string'}},
+    )
+
+    # Verify result contains expected fields
+    assert result['id'] == 'wfl-12345'
+    assert result['arn'] == 'arn:aws:omics:us-east-1:123456789012:workflow/wfl-12345'
+    assert result['status'] == 'ACTIVE'
+    assert result['name'] == 'test-workflow'
+    assert result['description'] == 'Test workflow description'
+
+
+@pytest.mark.asyncio
+async def test_create_workflow_minimal():
+    """Test workflow creation with minimal required parameters."""
+    # Mock response data
+    mock_response = {
+        'id': 'wfl-12345',
+        'arn': 'arn:aws:omics:us-east-1:123456789012:workflow/wfl-12345',
+        'status': 'ACTIVE',
+        'name': 'test-workflow',
+    }
+
+    # Mock context and client
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.create_workflow.return_value = mock_response
+
+    # Create base64 encoded workflow definition
+    definition_zip_base64 = base64.b64encode(b'test workflow content').decode('utf-8')
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_management.get_omics_client',
+        return_value=mock_client,
+    ):
+        result = await create_workflow(
+            mock_ctx,
+            name='test-workflow',
+            definition_zip_base64=definition_zip_base64,
+            description=None,
+            parameter_template=None,
+        )
+
+    # Verify client was called with only required parameters
+    mock_client.create_workflow.assert_called_once_with(
+        name='test-workflow',
+        definitionZip=b'test workflow content',
+    )
+
+    # Verify result contains expected fields
+    assert result['id'] == 'wfl-12345'
+    assert result['name'] == 'test-workflow'
+    # description should not be in result when it's None in response
+    assert result.get('description') is None
+
+
+@pytest.mark.asyncio
+async def test_create_workflow_invalid_base64():
+    """Test workflow creation with invalid base64 content."""
+    # Mock context
+    mock_ctx = AsyncMock()
+
+    with pytest.raises(Exception, match='Invalid base64-encoded string'):
+        await create_workflow(
+            mock_ctx,
+            name='test-workflow',
+            definition_zip_base64='invalid base64!',
+            description=None,
+            parameter_template=None,
+        )
+
+    # Verify error was reported to context
+    mock_ctx.error.assert_called_once()
+    assert 'Failed to decode base64' in mock_ctx.error.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_create_workflow_boto_error():
+    """Test handling of BotoCoreError in create_workflow."""
+    # Mock context and client
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.create_workflow.side_effect = botocore.exceptions.BotoCoreError()
+
+    # Create base64 encoded workflow definition
+    definition_zip_base64 = base64.b64encode(b'test workflow content').decode('utf-8')
+
+    with (
+        patch(
+            'awslabs.aws_healthomics_mcp_server.tools.workflow_management.get_omics_client',
+            return_value=mock_client,
+        ),
+        pytest.raises(botocore.exceptions.BotoCoreError),
+    ):
+        await create_workflow(
+            mock_ctx,
+            name='test-workflow',
+            definition_zip_base64=definition_zip_base64,
+            description=None,
+            parameter_template=None,
+        )
+
+    # Verify error was reported to context
+    mock_ctx.error.assert_called_once()
+    assert 'AWS error creating workflow' in mock_ctx.error.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_create_workflow_unexpected_error():
+    """Test handling of unexpected errors in create_workflow."""
+    # Mock context and client
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.create_workflow.side_effect = Exception('Unexpected error')
+
+    # Create base64 encoded workflow definition
+    definition_zip_base64 = base64.b64encode(b'test workflow content').decode('utf-8')
+
+    with (
+        patch(
+            'awslabs.aws_healthomics_mcp_server.tools.workflow_management.get_omics_client',
+            return_value=mock_client,
+        ),
+        pytest.raises(Exception, match='Unexpected error'),
+    ):
+        await create_workflow(
+            mock_ctx,
+            name='test-workflow',
+            definition_zip_base64=definition_zip_base64,
+            description=None,
+            parameter_template=None,
+        )
+
+    # Verify error was reported to context
+    mock_ctx.error.assert_called_once()
+    assert 'Unexpected error creating workflow' in mock_ctx.error.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_create_workflow_version_success():
+    """Test successful workflow version creation."""
+    # Mock response data
+    mock_response = {
+        'id': 'wfl-12345',
+        'arn': 'arn:aws:omics:us-east-1:123456789012:workflow/wfl-12345',
+        'status': 'ACTIVE',
+        'name': 'test-workflow',
+        'versionName': 'v2.0',
+    }
+
+    # Mock context and client
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.create_workflow_version.return_value = mock_response
+
+    # Create base64 encoded workflow definition
+    definition_zip_base64 = base64.b64encode(b'test workflow content v2').decode('utf-8')
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_management.get_omics_client',
+        return_value=mock_client,
+    ):
+        result = await create_workflow_version(
+            mock_ctx,
+            workflow_id='wfl-12345',
+            version_name='v2.0',
+            definition_zip_base64=definition_zip_base64,
+            description='Version 2.0 of test workflow',
+            parameter_template={'param1': {'type': 'string'}},
+            storage_type='DYNAMIC',
+            storage_capacity=None,
+        )
+
+    # Verify client was called correctly
+    mock_client.create_workflow_version.assert_called_once_with(
+        workflowId='wfl-12345',
+        versionName='v2.0',
+        definitionZip=b'test workflow content v2',
+        description='Version 2.0 of test workflow',
+        parameterTemplate={'param1': {'type': 'string'}},
+        storageType='DYNAMIC',
+    )
+
+    # Verify result contains expected fields
+    assert result['id'] == 'wfl-12345'
+    assert result['versionName'] == 'v2.0'
+    assert result['status'] == 'ACTIVE'
+
+
+@pytest.mark.asyncio
+async def test_create_workflow_version_with_static_storage():
+    """Test workflow version creation with static storage."""
+    # Mock response data
+    mock_response = {
+        'id': 'wfl-12345',
+        'arn': 'arn:aws:omics:us-east-1:123456789012:workflow/wfl-12345',
+        'status': 'ACTIVE',
+        'name': 'test-workflow',
+        'versionName': 'v2.0',
+    }
+
+    # Mock context and client
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.create_workflow_version.return_value = mock_response
+
+    # Create base64 encoded workflow definition
+    definition_zip_base64 = base64.b64encode(b'test workflow content v2').decode('utf-8')
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_management.get_omics_client',
+        return_value=mock_client,
+    ):
+        await create_workflow_version(
+            mock_ctx,
+            workflow_id='wfl-12345',
+            version_name='v2.0',
+            definition_zip_base64=definition_zip_base64,
+            description=None,
+            parameter_template=None,
+            storage_type='STATIC',
+            storage_capacity=1000,
+        )
+
+    # Verify client was called with static storage parameters
+    mock_client.create_workflow_version.assert_called_once_with(
+        workflowId='wfl-12345',
+        versionName='v2.0',
+        definitionZip=b'test workflow content v2',
+        storageType='STATIC',
+        storageCapacity=1000,
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_workflow_version_static_without_capacity():
+    """Test workflow version creation with static storage but no capacity."""
+    # Mock context
+    mock_ctx = AsyncMock()
+
+    # Create base64 encoded workflow definition
+    definition_zip_base64 = base64.b64encode(b'test workflow content v2').decode('utf-8')
+
+    with pytest.raises(ValueError, match='Storage capacity is required'):
+        await create_workflow_version(
+            mock_ctx,
+            workflow_id='wfl-12345',
+            version_name='v2.0',
+            definition_zip_base64=definition_zip_base64,
+            description=None,
+            parameter_template=None,
+            storage_type='STATIC',
+            storage_capacity=None,
+        )
+
+    # Verify error was reported to context
+    mock_ctx.error.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_create_workflow_version_invalid_base64():
+    """Test workflow version creation with invalid base64 content."""
+    # Mock context
+    mock_ctx = AsyncMock()
+
+    with pytest.raises(Exception, match='Invalid base64-encoded string'):
+        await create_workflow_version(
+            mock_ctx,
+            workflow_id='wfl-12345',
+            version_name='v2.0',
+            definition_zip_base64='invalid base64!',
+            description=None,
+            parameter_template=None,
+            storage_type='DYNAMIC',
+            storage_capacity=None,
+        )
+
+    # Verify error was reported to context
+    mock_ctx.error.assert_called_once()
+    assert 'Failed to decode base64' in mock_ctx.error.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_create_workflow_version_boto_error():
+    """Test handling of BotoCoreError in create_workflow_version."""
+    # Mock context and client
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.create_workflow_version.side_effect = botocore.exceptions.BotoCoreError()
+
+    # Create base64 encoded workflow definition
+    definition_zip_base64 = base64.b64encode(b'test workflow content v2').decode('utf-8')
+
+    with (
+        patch(
+            'awslabs.aws_healthomics_mcp_server.tools.workflow_management.get_omics_client',
+            return_value=mock_client,
+        ),
+        pytest.raises(botocore.exceptions.BotoCoreError),
+    ):
+        await create_workflow_version(
+            mock_ctx,
+            workflow_id='wfl-12345',
+            version_name='v2.0',
+            definition_zip_base64=definition_zip_base64,
+            description=None,
+            parameter_template=None,
+            storage_type='DYNAMIC',
+            storage_capacity=None,
+        )
+
+    # Verify error was reported to context
+    mock_ctx.error.assert_called_once()
+    assert 'AWS error creating workflow version' in mock_ctx.error.call_args[0][0]
