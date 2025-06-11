@@ -213,7 +213,7 @@ async def get_workflow(
     """
     client = get_omics_client()
 
-    params = {'id': workflow_id}
+    params: dict[str, Any] = {'id': workflow_id}
 
     if export_definition:
         params['export'] = ['DEFINITION']
