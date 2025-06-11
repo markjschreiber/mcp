@@ -18,6 +18,7 @@ import botocore.exceptions
 import pytest
 from awslabs.aws_healthomics_mcp_server.tools.workflow_management import (
     get_workflow,
+    list_workflow_versions,
     list_workflows,
 )
 from datetime import datetime, timezone
@@ -367,3 +368,174 @@ async def test_get_workflow_none_timestamp():
 
     # Verify timestamp handling
     assert result['creationTime'] is None
+
+
+@pytest.mark.asyncio
+async def test_list_workflow_versions_success(mock_omics_client, mock_context):
+    """Test successful listing of workflow versions."""
+    # Mock response from AWS
+    mock_omics_client.list_workflow_versions.return_value = {
+        'items': [
+            {
+                'arn': 'arn:aws:omics:us-east-1:123456789012:workflow/abc123/1.0',
+                'id': 'abc123',
+                'status': 'ACTIVE',
+                'type': 'WDL',
+                'name': 'Test Workflow',
+                'versionName': '1.0',
+                'creationTime': '2023-01-01T00:00:00Z',
+            },
+            {
+                'arn': 'arn:aws:omics:us-east-1:123456789012:workflow/abc123/2.0',
+                'id': 'abc123',
+                'status': 'ACTIVE',
+                'type': 'WDL',
+                'name': 'Test Workflow',
+                'versionName': '2.0',
+                'creationTime': '2023-02-01T00:00:00Z',
+            },
+        ],
+        'nextToken': None,
+    }
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_management.get_omics_client',
+        return_value=mock_omics_client,
+    ):
+        # Call the function
+        result = await list_workflow_versions(mock_context, workflow_id='abc123', max_results=10)
+
+    # Assertions
+    assert 'versions' in result
+    assert len(result['versions']) == 2
+    assert result['versions'][0]['versionName'] == '1.0'
+    assert result['versions'][1]['versionName'] == '2.0'
+    assert result['nextToken'] is None
+
+
+@pytest.mark.asyncio
+async def test_list_workflow_versions_with_pagination(mock_omics_client, mock_context):
+    """Test listing workflow versions with pagination."""
+    # First call response with nextToken
+    mock_omics_client.list_workflow_versions.side_effect = [
+        {
+            'items': [
+                {
+                    'arn': 'arn:aws:omics:us-east-1:123456789012:workflow/abc123/1.0',
+                    'id': 'abc123',
+                    'status': 'ACTIVE',
+                    'type': 'WDL',
+                    'name': 'Test Workflow',
+                    'versionName': '1.0',
+                    'creationTime': '2023-01-01T00:00:00Z',
+                }
+            ],
+            'nextToken': 'next-page-token',
+        },
+        {
+            'items': [
+                {
+                    'arn': 'arn:aws:omics:us-east-1:123456789012:workflow/abc123/2.0',
+                    'id': 'abc123',
+                    'status': 'ACTIVE',
+                    'type': 'WDL',
+                    'name': 'Test Workflow',
+                    'versionName': '2.0',
+                    'creationTime': '2023-02-01T00:00:00Z',
+                }
+            ],
+            'nextToken': None,
+        },
+    ]
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_management.get_omics_client',
+        return_value=mock_omics_client,
+    ):
+        # First call
+        result1 = await list_workflow_versions(mock_context, workflow_id='abc123', max_results=1)
+
+        # Second call with next token
+        result2 = await list_workflow_versions(
+            mock_context, workflow_id='abc123', max_results=1, next_token=result1['nextToken']
+        )
+
+    # Assertions for first call
+    assert 'versions' in result1
+    assert len(result1['versions']) == 1
+    assert result1['versions'][0]['versionName'] == '1.0'
+    assert result1['nextToken'] == 'next-page-token'
+
+    # Assertions for second call
+    assert 'versions' in result2
+    assert len(result2['versions']) == 1
+    assert result2['versions'][0]['versionName'] == '2.0'
+    assert result2['nextToken'] is None
+
+
+@pytest.mark.asyncio
+async def test_list_workflow_versions_empty_result(mock_omics_client, mock_context):
+    """Test listing workflow versions with empty result."""
+    # Mock empty response
+    mock_omics_client.list_workflow_versions.return_value = {
+        'items': [],
+        'nextToken': None,
+    }
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_management.get_omics_client',
+        return_value=mock_omics_client,
+    ):
+        # Call the function
+        result = await list_workflow_versions(mock_context, workflow_id='abc123', max_results=10)
+
+    # Assertions
+    assert 'versions' in result
+    assert len(result['versions']) == 0
+    if 'nextToken' in result:
+        assert result['nextToken'] is None
+
+
+@pytest.mark.asyncio
+async def test_list_workflow_versions_client_error(mock_omics_client, mock_context):
+    """Test handling of client error when listing workflow versions."""
+    from botocore.exceptions import ClientError
+
+    # Mock client error
+    error_response = {
+        'Error': {'Code': 'ResourceNotFoundException', 'Message': 'Workflow not found'}
+    }
+    mock_omics_client.list_workflow_versions.side_effect = ClientError(
+        error_response, 'ListWorkflowVersions'
+    )
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_management.get_omics_client',
+        return_value=mock_omics_client,
+    ):
+        # Call the function and expect it to raise an exception
+        with pytest.raises(ClientError):
+            await list_workflow_versions(mock_context, workflow_id='nonexistent-id')
+
+        # Verify error was reported to context
+        mock_context.error.assert_called_once()
+        assert 'Workflow not found' in mock_context.error.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_list_workflow_versions_general_exception(mock_omics_client, mock_context):
+    """Test handling of general exception when listing workflow versions."""
+    # Mock general exception
+    mock_omics_client.list_workflow_versions.side_effect = Exception('Unexpected error')
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_management.get_omics_client',
+        return_value=mock_omics_client,
+    ):
+        # Call the function and expect it to raise an exception
+        with pytest.raises(Exception):
+            await list_workflow_versions(mock_context, workflow_id='abc123')
+
+        # Verify error was reported to context
+        mock_context.error.assert_called_once()
+        assert 'Unexpected error listing workflow versions' in mock_context.error.call_args[0][0]

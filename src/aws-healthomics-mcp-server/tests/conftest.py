@@ -48,6 +48,13 @@ def mock_logs_client():
     return client
 
 
+@pytest.fixture
+def mock_boto_client():
+    """Create a mock boto3 client for testing."""
+    client = MagicMock()
+    return client
+
+
 @pytest.fixture(autouse=True)
 def mock_environment():
     """Mock environment variables for testing."""

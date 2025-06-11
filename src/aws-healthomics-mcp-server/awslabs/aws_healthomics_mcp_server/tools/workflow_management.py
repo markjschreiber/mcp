@@ -413,7 +413,9 @@ async def list_workflow_versions(
                     'versionName': version.get('versionName'),
                     'status': version.get('status'),
                     'type': version.get('type'),
-                    'creationTime': version.get('creationTime').isoformat()
+                    'creationTime': version.get('creationTime')
+                    if isinstance(version.get('creationTime'), str)
+                    else version.get('creationTime').isoformat()
                     if version.get('creationTime')
                     else None,
                 }
