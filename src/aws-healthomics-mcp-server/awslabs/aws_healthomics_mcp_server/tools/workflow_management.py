@@ -20,8 +20,6 @@ import os
 from awslabs.aws_healthomics_mcp_server.consts import (
     DEFAULT_MAX_RESULTS,
     DEFAULT_REGION,
-    ERROR_INVALID_EXPORT_TYPE,
-    EXPORT_TYPES,
 )
 from awslabs.aws_healthomics_mcp_server.utils.aws_utils import (
     decode_from_base64,
@@ -197,9 +195,9 @@ async def get_workflow(
         ...,
         description='ID of the workflow to retrieve',
     ),
-    export_type: Optional[str] = Field(
-        None,
-        description='Optional export type (DEFINITION, PARAMETER_TEMPLATE)',
+    export_definition: bool = Field(
+        False,
+        description='Whether to include the workflow definition in the response',
     ),
 ) -> Dict[str, Any]:
     """Get details about a specific workflow.
@@ -207,22 +205,17 @@ async def get_workflow(
     Args:
         ctx: MCP context for error reporting
         workflow_id: ID of the workflow to retrieve
-        export_type: Optional export type (DEFINITION, PARAMETER_TEMPLATE)
+        export_definition: Whether to include the workflow definition in the response
 
     Returns:
-        Dictionary containing workflow details
+        Dictionary containing workflow details including parameter template
     """
     client = get_omics_client()
 
     params = {'id': workflow_id}
 
-    if export_type:
-        if export_type not in EXPORT_TYPES:
-            error_message = ERROR_INVALID_EXPORT_TYPE.format(EXPORT_TYPES)
-            logger.error(error_message)
-            await ctx.error(error_message)
-            raise ValueError(error_message)
-        params['export'] = export_type
+    if export_definition:
+        params['export'] = 'DEFINITION'
 
     try:
         response = client.get_workflow(**params)

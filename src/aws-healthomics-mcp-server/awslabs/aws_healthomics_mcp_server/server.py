@@ -79,7 +79,6 @@ This MCP server provides tools for creating, managing, and analyzing genomic wor
 
 ### Helper Tools
 - **PackageWorkflow**: Package workflow definition files into a base64-encoded ZIP
-- **ValidateWorkflow**: Validate workflow syntax
 - **GetSupportedRegions**: Get the list of AWS regions where HealthOmics is available
 
 ## Service Availability

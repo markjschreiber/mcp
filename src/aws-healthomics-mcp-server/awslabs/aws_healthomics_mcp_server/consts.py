@@ -60,15 +60,12 @@ RUN_STATUSES = [
 
 # Export types
 EXPORT_TYPE_DEFINITION = 'DEFINITION'
-EXPORT_TYPE_PARAMETER_TEMPLATE = 'PARAMETER_TEMPLATE'
-EXPORT_TYPES = [EXPORT_TYPE_DEFINITION, EXPORT_TYPE_PARAMETER_TEMPLATE]
 
 # Error messages
 
 ERROR_INVALID_STORAGE_TYPE = 'Invalid storage type. Must be one of: {}'
 ERROR_INVALID_CACHE_BEHAVIOR = 'Invalid cache behavior. Must be one of: {}'
 ERROR_INVALID_RUN_STATUS = 'Invalid run status. Must be one of: {}'
-ERROR_INVALID_EXPORT_TYPE = 'Invalid export type. Must be one of: {}'
 ERROR_STATIC_STORAGE_REQUIRES_CAPACITY = (
     'Storage capacity is required when using STATIC storage type'
 )

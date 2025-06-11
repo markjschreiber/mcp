@@ -208,7 +208,7 @@ async def test_get_workflow_success():
         'awslabs.aws_healthomics_mcp_server.tools.workflow_management.get_omics_client',
         return_value=mock_client,
     ):
-        result = await get_workflow(ctx=mock_ctx, workflow_id='wfl-12345', export_type=None)
+        result = await get_workflow(ctx=mock_ctx, workflow_id='wfl-12345', export_definition=False)
 
     # Verify client was called correctly
     mock_client.get_workflow.assert_called_once_with(id='wfl-12345')
@@ -243,28 +243,13 @@ async def test_get_workflow_with_export():
         'awslabs.aws_healthomics_mcp_server.tools.workflow_management.get_omics_client',
         return_value=mock_client,
     ):
-        result = await get_workflow(
-            ctx=mock_ctx, workflow_id='wfl-12345', export_type='DEFINITION'
-        )
+        result = await get_workflow(ctx=mock_ctx, workflow_id='wfl-12345', export_definition=True)
 
     # Verify export parameter was passed
     mock_client.get_workflow.assert_called_once_with(id='wfl-12345', export='DEFINITION')
 
     # Verify definition was included in result
     assert result['definition'] == 'workflow test { ... }'
-
-
-@pytest.mark.asyncio
-async def test_get_workflow_invalid_export_type():
-    """Test workflow retrieval with invalid export type."""
-    mock_ctx = AsyncMock()
-
-    with pytest.raises(ValueError, match='Invalid export type'):
-        await get_workflow(ctx=mock_ctx, workflow_id='wfl-12345', export_type='INVALID')
-
-    # Verify error was reported to context
-    mock_ctx.error.assert_called_once()
-    assert 'Invalid export type' in mock_ctx.error.call_args[0][0]
 
 
 @pytest.mark.asyncio
@@ -290,7 +275,7 @@ async def test_get_workflow_minimal_response():
         'awslabs.aws_healthomics_mcp_server.tools.workflow_management.get_omics_client',
         return_value=mock_client,
     ):
-        result = await get_workflow(ctx=mock_ctx, workflow_id='wfl-12345', export_type=None)
+        result = await get_workflow(ctx=mock_ctx, workflow_id='wfl-12345', export_definition=False)
 
     # Verify required fields
     assert result['id'] == 'wfl-12345'
@@ -316,7 +301,7 @@ async def test_get_workflow_boto_error():
         return_value=mock_client,
     ):
         with pytest.raises(botocore.exceptions.BotoCoreError):
-            await get_workflow(ctx=mock_ctx, workflow_id='wfl-12345', export_type=None)
+            await get_workflow(ctx=mock_ctx, workflow_id='wfl-12345', export_definition=False)
 
     # Verify error was reported to context
     mock_ctx.error.assert_called_once()
@@ -336,7 +321,7 @@ async def test_get_workflow_unexpected_error():
         return_value=mock_client,
     ):
         with pytest.raises(Exception, match='Unexpected error'):
-            await get_workflow(ctx=mock_ctx, workflow_id='wfl-12345', export_type=None)
+            await get_workflow(ctx=mock_ctx, workflow_id='wfl-12345', export_definition=False)
 
     # Verify error was reported to context
     mock_ctx.error.assert_called_once()
@@ -364,7 +349,7 @@ async def test_get_workflow_none_timestamp():
         'awslabs.aws_healthomics_mcp_server.tools.workflow_management.get_omics_client',
         return_value=mock_client,
     ):
-        result = await get_workflow(ctx=mock_ctx, workflow_id='wfl-12345', export_type=None)
+        result = await get_workflow(ctx=mock_ctx, workflow_id='wfl-12345', export_definition=False)
 
     # Verify timestamp handling
     assert result['creationTime'] is None

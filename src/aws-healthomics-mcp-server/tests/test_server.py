@@ -45,7 +45,6 @@ def test_server_has_required_tools():
         'GetTaskLogs',
         'DiagnoseRunFailure',
         'PackageWorkflow',
-        'ValidateWorkflow',
         'GetSupportedRegions',
     ]
 
