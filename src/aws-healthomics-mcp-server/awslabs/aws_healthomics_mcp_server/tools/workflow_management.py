@@ -235,6 +235,9 @@ async def get_workflow(
         if 'description' in response:
             result['description'] = response['description']
 
+        if 'statusMessage' in response:
+            result['statusMessage'] = response['statusMessage']
+
         if 'parameterTemplate' in response:
             result['parameterTemplate'] = response['parameterTemplate']
 

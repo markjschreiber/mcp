@@ -193,6 +193,7 @@ async def test_get_workflow_success():
         'arn': 'arn:aws:omics:us-east-1:123456789012:workflow/wfl-12345',
         'name': 'test-workflow',
         'status': 'ACTIVE',
+        'statusMessage': 'Workflow is ready for execution',
         'type': 'WDL',
         'description': 'Test workflow description',
         'parameterTemplate': {'param1': {'type': 'string'}},
@@ -218,6 +219,7 @@ async def test_get_workflow_success():
     assert result['arn'] == 'arn:aws:omics:us-east-1:123456789012:workflow/wfl-12345'
     assert result['name'] == 'test-workflow'
     assert result['status'] == 'ACTIVE'
+    assert result['statusMessage'] == 'Workflow is ready for execution'
     assert result['type'] == 'WDL'
     assert result['description'] == 'Test workflow description'
     assert result['parameterTemplate'] == {'param1': {'type': 'string'}}
@@ -391,6 +393,37 @@ async def test_get_workflow_none_timestamp():
 
     # Verify timestamp handling
     assert result['creationTime'] is None
+
+
+@pytest.mark.asyncio
+async def test_get_workflow_with_status_message():
+    """Test workflow retrieval with status message."""
+    # Mock response with status message
+    creation_time = datetime.now(timezone.utc)
+    mock_response = {
+        'id': 'wfl-12345',
+        'arn': 'arn:aws:omics:us-east-1:123456789012:workflow/wfl-12345',
+        'name': 'test-workflow',
+        'status': 'FAILED',
+        'statusMessage': 'Workflow validation failed: Invalid WDL syntax',
+        'type': 'WDL',
+        'creationTime': creation_time,
+    }
+
+    # Mock context and client
+    mock_ctx = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.get_workflow.return_value = mock_response
+
+    with patch(
+        'awslabs.aws_healthomics_mcp_server.tools.workflow_management.get_omics_client',
+        return_value=mock_client,
+    ):
+        result = await get_workflow(ctx=mock_ctx, workflow_id='wfl-12345', export_definition=False)
+
+    # Verify status message is included
+    assert result['status'] == 'FAILED'
+    assert result['statusMessage'] == 'Workflow validation failed: Invalid WDL syntax'
 
 
 @pytest.mark.asyncio
