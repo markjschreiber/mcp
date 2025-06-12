@@ -20,6 +20,7 @@ import os
 from awslabs.aws_healthomics_mcp_server.consts import DEFAULT_REGION
 from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import (
     get_run_engine_logs,
+    get_run_manifest_logs,
     get_task_logs,
 )
 from awslabs.aws_healthomics_mcp_server.utils.aws_utils import get_aws_session
@@ -51,14 +52,29 @@ async def diagnose_run_failure(
         description='ID of the failed run',
     ),
 ) -> Dict[str, Any]:
-    """Diagnose a failed workflow run.
+    """Provides comprehensive diagnostic information for a failed workflow run.
+
+    This function collects multiple sources of diagnostic information including:
+    - Run details and failure reason
+    - Engine logs from CloudWatch
+    - Run manifest logs containing workflow summary and resource metrics
+    - Task logs from all failed tasks
+    - Actionable recommendations for troubleshooting
 
     Args:
         ctx: MCP context for error reporting
         run_id: ID of the failed run
 
     Returns:
-        Dictionary containing diagnostic information
+        Dictionary containing comprehensive diagnostic information including:
+        - runId: The run identifier
+        - status: Current run status
+        - failureReason: AWS-provided failure reason
+        - runUuid: Run UUID for log stream identification
+        - engineLogs: Engine execution logs
+        - manifestLogs: Run manifest logs with workflow summary
+        - failedTasks: List of failed tasks with their logs
+        - recommendations: Troubleshooting recommendations
     """
     try:
         omics_client = get_omics_client()
@@ -73,10 +89,14 @@ async def diagnose_run_failure(
                 'message': f'Run is not in FAILED state. Current status: {run_response.get("status")}',
             }
 
-        # Get failure reason
+        # Extract run details
         failure_reason = run_response.get('failureReason', 'No failure reason provided')
+        run_uuid = run_response.get('uuid')
+
+        logger.info(f'Diagnosing failed run {run_id} with UUID {run_uuid}')
 
         # Get engine logs using the workflow_analysis function
+        engine_logs = []
         try:
             engine_logs_response = await get_run_engine_logs(
                 ctx=ctx,
@@ -89,68 +109,155 @@ async def diagnose_run_failure(
             engine_logs = [
                 event.get('message', '') for event in engine_logs_response.get('events', [])
             ]
+            logger.info(f'Retrieved {len(engine_logs)} engine log entries')
         except Exception as e:
             error_message = f'Error retrieving engine logs: {str(e)}'
             logger.error(error_message)
             engine_logs = [error_message]
 
-        # Get failed tasks
-        tasks_response = omics_client.list_run_tasks(
-            id=run_id,
-            status='FAILED',
-            maxResults=10,
-        )
-
-        failed_tasks = []
-        for task in tasks_response.get('items', []):
-            task_id = task.get('taskId')
-            task_name = task.get('name')
-
-            # Get task logs using the workflow_analysis function
+        # Get run manifest logs if UUID is available
+        manifest_logs = []
+        if run_uuid:
             try:
-                task_logs_response = await get_task_logs(
+                manifest_logs_response = await get_run_manifest_logs(
                     ctx=ctx,
                     run_id=run_id,
-                    task_id=task_id,
-                    limit=50,
+                    run_uuid=run_uuid,
+                    limit=100,
                     start_from_head=False,  # Get the most recent logs
                 )
 
                 # Extract just the messages for backward compatibility
-                task_logs = [
-                    event.get('message', '') for event in task_logs_response.get('events', [])
+                manifest_logs = [
+                    event.get('message', '') for event in manifest_logs_response.get('events', [])
                 ]
+                logger.info(f'Retrieved {len(manifest_logs)} manifest log entries')
             except Exception as e:
-                error_message = f'Error retrieving task logs: {str(e)}'
+                error_message = f'Error retrieving manifest logs: {str(e)}'
                 logger.error(error_message)
-                task_logs = [error_message]
+                manifest_logs = [error_message]
+        else:
+            logger.warning(f'No UUID available for run {run_id}, skipping manifest logs')
+            manifest_logs = ['No run UUID available - manifest logs cannot be retrieved']
 
-            failed_tasks.append(
-                {
-                    'taskId': task_id,
-                    'name': task_name,
-                    'statusMessage': task.get('statusMessage', 'No status message'),
-                    'logs': task_logs,
-                }
-            )
+        # Get all failed tasks (not just the first 10)
+        failed_tasks = []
+        next_token = None
 
-        # Compile diagnostic information
+        while True:
+            list_tasks_params = {
+                'id': run_id,
+                'status': 'FAILED',
+                'maxResults': 100,  # Get more tasks per request
+            }
+            if next_token:
+                list_tasks_params['startingToken'] = next_token
+
+            tasks_response = omics_client.list_run_tasks(**list_tasks_params)
+
+            for task in tasks_response.get('items', []):
+                task_id = task.get('taskId')
+                task_name = task.get('name')
+                task_status_message = task.get('statusMessage', 'No status message')
+
+                logger.info(f'Processing failed task {task_id} ({task_name})')
+
+                # Get task logs using the workflow_analysis function
+                task_logs = []
+                try:
+                    task_logs_response = await get_task_logs(
+                        ctx=ctx,
+                        run_id=run_id,
+                        task_id=task_id,
+                        limit=100,  # Get more logs per task
+                        start_from_head=False,  # Get the most recent logs
+                    )
+
+                    # Extract just the messages for backward compatibility
+                    task_logs = [
+                        event.get('message', '') for event in task_logs_response.get('events', [])
+                    ]
+                    logger.info(f'Retrieved {len(task_logs)} log entries for task {task_id}')
+                except Exception as e:
+                    error_message = f'Error retrieving task logs for {task_id}: {str(e)}'
+                    logger.error(error_message)
+                    task_logs = [error_message]
+
+                failed_tasks.append(
+                    {
+                        'taskId': task_id,
+                        'name': task_name,
+                        'statusMessage': task_status_message,
+                        'logs': task_logs,
+                        'logCount': len(task_logs),
+                    }
+                )
+
+            # Check if there are more tasks to retrieve
+            next_token = tasks_response.get('nextToken')
+            if not next_token:
+                break
+
+        logger.info(f'Found {len(failed_tasks)} failed tasks for run {run_id}')
+
+        # Enhanced recommendations based on common failure patterns
+        recommendations = [
+            'Check IAM role permissions for S3 access and CloudWatch Logs',
+            'Verify container images are accessible from the HealthOmics service',
+            "Ensure input files exist and are accessible by the run's IAM role",
+            'Check for syntax errors in workflow definition',
+            'Verify parameter values match the expected types and formats',
+            'Review manifest logs for resource allocation and utilization issues',
+            'Check task logs for application-specific error messages',
+            "Verify that output S3 locations are writable by the run's IAM role",
+            'Consider increasing resource allocations if tasks failed due to memory/CPU limits',
+            'Check for network connectivity issues if tasks failed during data transfer',
+        ]
+
+        # Compile comprehensive diagnostic information
         diagnosis = {
             'runId': run_id,
+            'runUuid': run_uuid,
             'status': run_response.get('status'),
             'failureReason': failure_reason,
+            'creationTime': run_response.get('creationTime').isoformat()
+            if hasattr(run_response.get('creationTime'), 'isoformat')
+            else run_response.get('creationTime'),
+            'startTime': run_response.get('startTime').isoformat()
+            if hasattr(run_response.get('startTime'), 'isoformat')
+            else run_response.get('startTime'),
+            'stopTime': run_response.get('stopTime').isoformat()
+            if hasattr(run_response.get('stopTime'), 'isoformat')
+            else run_response.get('stopTime'),
+            'workflowId': run_response.get('workflowId'),
+            'workflowType': run_response.get('workflowType'),
             'engineLogs': engine_logs,
+            'engineLogCount': len(engine_logs),
+            'manifestLogs': manifest_logs,
+            'manifestLogCount': len(manifest_logs),
             'failedTasks': failed_tasks,
-            'recommendations': [
-                'Check IAM role permissions for S3 access and CloudWatch Logs',
-                'Verify container images are accessible from the HealthOmics service',
-                'Ensure input files exist and are accessible',
-                'Check for syntax errors in workflow definition',
-                'Verify parameter values match the expected types',
-            ],
+            'failedTaskCount': len(failed_tasks),
+            'recommendations': recommendations,
+            'summary': {
+                'totalFailedTasks': len(failed_tasks),
+                'hasManifestLogs': bool(
+                    run_uuid
+                    and len(manifest_logs) > 0
+                    and 'Error retrieving manifest logs' not in str(manifest_logs)
+                ),
+                'hasEngineLogs': len(engine_logs) > 0
+                and 'Error retrieving engine logs' not in str(engine_logs),
+                'diagnosisTimestamp': ctx.session.request_id
+                if hasattr(ctx, 'session')
+                else 'unknown',
+            },
         }
 
+        logger.info(
+            f'Diagnosis complete for run {run_id}: {len(failed_tasks)} failed tasks, {len(engine_logs)} engine logs, {len(manifest_logs)} manifest logs'
+        )
         return diagnosis
+
     except botocore.exceptions.ClientError as e:
         error_message = f'AWS error diagnosing run failure for run {run_id}: {str(e)}'
         logger.error(error_message)

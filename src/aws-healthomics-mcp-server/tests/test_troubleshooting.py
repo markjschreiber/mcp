@@ -47,6 +47,11 @@ def sample_failed_run_response():
         'failureReason': 'Task execution failed due to insufficient memory',
         'name': 'test-workflow-run',
         'workflowId': 'workflow-67890',
+        'uuid': 'uuid-abcd-1234',
+        'creationTime': '2024-01-01T10:00:00Z',
+        'startTime': '2024-01-01T10:05:00Z',
+        'stopTime': '2024-01-01T10:30:00Z',
+        'workflowType': 'WDL',
     }
 
 
@@ -78,7 +83,8 @@ def sample_failed_tasks():
                 'status': 'FAILED',
                 'statusMessage': 'Out of memory error',
             },
-        ]
+        ],
+        'nextToken': None,
     }
 
 
@@ -129,11 +135,13 @@ class TestDiagnoseRunFailure:
 
     @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_omics_client')
     @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs')
+    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_manifest_logs')
     @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_task_logs')
     @pytest.mark.asyncio
     async def test_diagnose_run_failure_success(
         self,
         mock_get_task_logs,
+        mock_get_run_manifest_logs,
         mock_get_run_engine_logs,
         mock_get_omics_client,
         mock_context,
@@ -150,6 +158,7 @@ class TestDiagnoseRunFailure:
 
         # Mock log responses
         mock_get_run_engine_logs.return_value = sample_log_events
+        mock_get_run_manifest_logs.return_value = sample_log_events
         mock_get_task_logs.return_value = sample_log_events
 
         # Act
@@ -160,11 +169,24 @@ class TestDiagnoseRunFailure:
 
         # Assert
         assert result['runId'] == 'run-12345'
+        assert result['runUuid'] == 'uuid-abcd-1234'
         assert result['status'] == 'FAILED'
         assert result['failureReason'] == 'Task execution failed due to insufficient memory'
+        assert result['workflowId'] == 'workflow-67890'
+        assert result['workflowType'] == 'WDL'
         assert len(result['engineLogs']) == 3
+        assert result['engineLogCount'] == 3
+        assert len(result['manifestLogs']) == 3
+        assert result['manifestLogCount'] == 3
         assert len(result['failedTasks']) == 2
-        assert len(result['recommendations']) > 0
+        assert result['failedTaskCount'] == 2
+        assert len(result['recommendations']) > 5  # Enhanced recommendations
+
+        # Verify summary information
+        summary = result['summary']
+        assert summary['totalFailedTasks'] == 2
+        assert summary['hasManifestLogs'] is True
+        assert summary['hasEngineLogs'] is True
 
         # Verify failed task details
         first_task = result['failedTasks'][0]
@@ -172,13 +194,14 @@ class TestDiagnoseRunFailure:
         assert first_task['name'] == 'preprocessing'
         assert first_task['statusMessage'] == 'Container exited with code 1'
         assert len(first_task['logs']) == 3
+        assert first_task['logCount'] == 3
 
         # Verify API calls
         mock_client.get_run.assert_called_once_with(id='run-12345')
         mock_client.list_run_tasks.assert_called_once_with(
             id='run-12345',
             status='FAILED',
-            maxResults=10,
+            maxResults=100,  # Updated to 100
         )
 
         # Verify log function calls with correct parameters
@@ -189,20 +212,29 @@ class TestDiagnoseRunFailure:
             start_from_head=False,
         )
 
+        # Verify manifest log call
+        mock_get_run_manifest_logs.assert_called_once_with(
+            ctx=mock_context,
+            run_id='run-12345',
+            run_uuid='uuid-abcd-1234',
+            limit=100,
+            start_from_head=False,
+        )
+
         # Verify task log calls
         assert mock_get_task_logs.call_count == 2
         mock_get_task_logs.assert_any_call(
             ctx=mock_context,
             run_id='run-12345',
             task_id='task-111',
-            limit=50,
+            limit=100,  # Updated to 100
             start_from_head=False,
         )
         mock_get_task_logs.assert_any_call(
             ctx=mock_context,
             run_id='run-12345',
             task_id='task-222',
-            limit=50,
+            limit=100,  # Updated to 100
             start_from_head=False,
         )
 
@@ -237,23 +269,71 @@ class TestDiagnoseRunFailure:
     @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_omics_client')
     @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs')
     @pytest.mark.asyncio
+    async def test_diagnose_run_failure_no_uuid(
+        self,
+        mock_get_run_engine_logs,
+        mock_get_omics_client,
+        mock_context,
+        sample_log_events,
+    ):
+        """Test diagnosis when run has no UUID (no manifest logs available)."""
+        # Arrange
+        mock_client = MagicMock()
+        mock_get_omics_client.return_value = mock_client
+
+        # Run response without UUID
+        run_response = {
+            'id': 'run-12345',
+            'status': 'FAILED',
+            'failureReason': 'Task execution failed',
+            'name': 'test-workflow-run',
+            'workflowId': 'workflow-67890',
+        }
+        mock_client.get_run.return_value = run_response
+        mock_client.list_run_tasks.return_value = {'items': [], 'nextToken': None}
+        mock_get_run_engine_logs.return_value = sample_log_events
+
+        # Act
+        result = await diagnose_run_failure(
+            ctx=mock_context,
+            run_id='run-12345',
+        )
+
+        # Assert
+        assert result['runId'] == 'run-12345'
+        assert result['runUuid'] is None
+        assert len(result['manifestLogs']) == 1
+        assert 'No run UUID available' in result['manifestLogs'][0]
+        assert result['manifestLogCount'] == 1
+        assert result['summary']['hasManifestLogs'] is False
+
+    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_omics_client')
+    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs')
+    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_manifest_logs')
+    @pytest.mark.asyncio
     async def test_diagnose_run_failure_engine_logs_error(
         self,
+        mock_get_run_manifest_logs,
         mock_get_run_engine_logs,
         mock_get_omics_client,
         mock_context,
         sample_failed_run_response,
         sample_failed_tasks,
+        sample_log_events,
     ):
         """Test diagnosis when engine log retrieval fails."""
         # Arrange
         mock_client = MagicMock()
         mock_get_omics_client.return_value = mock_client
         mock_client.get_run.return_value = sample_failed_run_response
-        mock_client.list_run_tasks.return_value = {'items': []}  # No failed tasks
+        mock_client.list_run_tasks.return_value = {
+            'items': [],
+            'nextToken': None,
+        }  # No failed tasks
 
-        # Mock engine logs to raise an exception
+        # Mock engine logs to raise an exception, but manifest logs succeed
         mock_get_run_engine_logs.side_effect = Exception('Log retrieval failed')
+        mock_get_run_manifest_logs.return_value = sample_log_events
 
         # Act
         result = await diagnose_run_failure(
@@ -266,6 +346,7 @@ class TestDiagnoseRunFailure:
         assert result['status'] == 'FAILED'
         assert len(result['engineLogs']) == 1
         assert 'Error retrieving engine logs' in result['engineLogs'][0]
+        assert len(result['manifestLogs']) == 3  # Manifest logs succeeded
         assert len(result['failedTasks']) == 0
 
     @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_omics_client')
@@ -435,3 +516,116 @@ class TestDiagnoseRunFailure:
         assert 'input files' in recommendation_text
         assert 'syntax errors' in recommendation_text
         assert 'parameter values' in recommendation_text
+        assert 'manifest logs' in recommendation_text  # New enhanced recommendation
+        assert 'resource allocation' in recommendation_text  # New enhanced recommendation
+
+    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_omics_client')
+    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs')
+    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_manifest_logs')
+    @pytest.mark.asyncio
+    async def test_diagnose_run_failure_manifest_logs_error(
+        self,
+        mock_get_run_manifest_logs,
+        mock_get_run_engine_logs,
+        mock_get_omics_client,
+        mock_context,
+        sample_failed_run_response,
+        sample_log_events,
+    ):
+        """Test diagnosis when manifest log retrieval fails."""
+        # Arrange
+        mock_client = MagicMock()
+        mock_get_omics_client.return_value = mock_client
+        mock_client.get_run.return_value = sample_failed_run_response
+        mock_client.list_run_tasks.return_value = {'items': [], 'nextToken': None}
+
+        # Mock successful engine logs but failed manifest logs
+        mock_get_run_engine_logs.return_value = sample_log_events
+        mock_get_run_manifest_logs.side_effect = Exception('Manifest log retrieval failed')
+
+        # Act
+        result = await diagnose_run_failure(
+            ctx=mock_context,
+            run_id='run-12345',
+        )
+
+        # Assert
+        assert result['runId'] == 'run-12345'
+        assert len(result['engineLogs']) == 3  # Engine logs succeeded
+        assert len(result['manifestLogs']) == 1
+        assert 'Error retrieving manifest logs' in result['manifestLogs'][0]
+        assert result['summary']['hasManifestLogs'] is False
+
+    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_omics_client')
+    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs')
+    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_manifest_logs')
+    @pytest.mark.asyncio
+    async def test_diagnose_run_failure_pagination_multiple_tasks(
+        self,
+        mock_get_run_manifest_logs,
+        mock_get_run_engine_logs,
+        mock_get_omics_client,
+        mock_context,
+        sample_failed_run_response,
+        sample_log_events,
+    ):
+        """Test diagnosis with pagination for multiple failed tasks."""
+        # Arrange
+        mock_client = MagicMock()
+        mock_get_omics_client.return_value = mock_client
+        mock_client.get_run.return_value = sample_failed_run_response
+
+        # Mock paginated task responses
+        first_page = {
+            'items': [
+                {
+                    'taskId': 'task-001',
+                    'name': 'task1',
+                    'status': 'FAILED',
+                    'statusMessage': 'Failed task 1',
+                }
+            ],
+            'nextToken': 'token123',
+        }
+        second_page = {
+            'items': [
+                {
+                    'taskId': 'task-002',
+                    'name': 'task2',
+                    'status': 'FAILED',
+                    'statusMessage': 'Failed task 2',
+                }
+            ],
+            'nextToken': None,
+        }
+        mock_client.list_run_tasks.side_effect = [first_page, second_page]
+
+        # Mock log responses
+        mock_get_run_engine_logs.return_value = sample_log_events
+        mock_get_run_manifest_logs.return_value = sample_log_events
+
+        # Act
+        result = await diagnose_run_failure(
+            ctx=mock_context,
+            run_id='run-12345',
+        )
+
+        # Assert
+        assert result['runId'] == 'run-12345'
+        assert len(result['failedTasks']) == 2
+        assert result['failedTaskCount'] == 2
+        assert result['summary']['totalFailedTasks'] == 2
+
+        # Verify both API calls were made for pagination
+        assert mock_client.list_run_tasks.call_count == 2
+        mock_client.list_run_tasks.assert_any_call(
+            id='run-12345',
+            status='FAILED',
+            maxResults=100,
+        )
+        mock_client.list_run_tasks.assert_any_call(
+            id='run-12345',
+            status='FAILED',
+            maxResults=100,
+            startingToken='token123',
+        )
