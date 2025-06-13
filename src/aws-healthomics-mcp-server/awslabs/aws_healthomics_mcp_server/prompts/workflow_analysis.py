@@ -179,7 +179,16 @@ Please provide a comprehensive performance analysis report focusing on these key
 - Recommend more cost-effective instance types where appropriate
 - Consider memory-optimized vs compute-optimized instances based on usage patterns
 
-### 5. Specific Recommendations
+### 5. HealthOmics Considerations
+- The minimum recommended CPU allocation for a task is 1 CPU
+- The minimum recommended Memory allocation for a task is 1 GB
+- Task containers must contain the BASH shell and not rely on any ENTRYPOINT
+- Omics instance types have the following CPU to Memory ratios and recommended CPU and Memory reservations for tasks should observe these
+    - omics.c family has 2 GiB of memory per CPU
+    - omics.m family has 4 GiB of memory per CPU
+    - omics.r family has 8 GiB of memory per CPU
+
+### 6. Specific Recommendations
 For each task, provide:
 - Current resource allocation vs actual usage
 - Recommended resource allocation
@@ -196,7 +205,7 @@ For each task, provide:
 ## Optimization Thresholds
 - **Over-provisioned threshold**: < 50% efficiency
 - **Under-provisioned threshold**: > 90% max utilization
-- **Target efficiency**: ~70% for optimal cost/performance balance
+- **Target efficiency**: ~80% for optimal cost/performance balance
 
 Please provide specific, actionable recommendations with quantified benefits and clear prioritization.
 """
