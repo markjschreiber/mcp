@@ -700,3 +700,61 @@ class TestTimeWindowCalculation:
         log_start, log_end = calculate_log_time_window('invalid', None)
         assert log_start is None
         assert log_end is None
+
+    def test_calculate_log_time_window_with_invalid_datetime_string(self):
+        """Test calculate_log_time_window with invalid datetime string."""
+        from awslabs.aws_healthomics_mcp_server.tools.troubleshooting import (
+            calculate_log_time_window,
+        )
+
+        # Test with invalid datetime string
+        log_start, log_end = calculate_log_time_window('invalid-date', '2024-01-01T10:30:00Z')
+        assert log_start is None
+        assert log_end is None
+
+    def test_calculate_log_time_window_with_non_datetime_objects(self):
+        """Test calculate_log_time_window with non-datetime objects."""
+        from awslabs.aws_healthomics_mcp_server.tools.troubleshooting import (
+            calculate_log_time_window,
+        )
+
+        # Test with non-datetime objects
+        log_start, log_end = calculate_log_time_window(123, 456)
+        assert log_start is None
+        assert log_end is None
+
+
+class TestSafeDatetimeToIso:
+    """Test the safe_datetime_to_iso function."""
+
+    def test_safe_datetime_to_iso_with_none(self):
+        """Test safe_datetime_to_iso with None input."""
+        from awslabs.aws_healthomics_mcp_server.tools.troubleshooting import safe_datetime_to_iso
+
+        result = safe_datetime_to_iso(None)
+        assert result is None
+
+    def test_safe_datetime_to_iso_with_datetime(self):
+        """Test safe_datetime_to_iso with datetime object."""
+        from awslabs.aws_healthomics_mcp_server.tools.troubleshooting import safe_datetime_to_iso
+
+        dt = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        result = safe_datetime_to_iso(dt)
+        assert result == '2024-01-01T10:00:00+00:00'
+
+    def test_safe_datetime_to_iso_with_string(self):
+        """Test safe_datetime_to_iso with string input."""
+        from awslabs.aws_healthomics_mcp_server.tools.troubleshooting import safe_datetime_to_iso
+
+        result = safe_datetime_to_iso('2024-01-01T10:00:00Z')
+        assert result == '2024-01-01T10:00:00Z'
+
+    def test_safe_datetime_to_iso_with_other_type(self):
+        """Test safe_datetime_to_iso with other type."""
+        from awslabs.aws_healthomics_mcp_server.tools.troubleshooting import safe_datetime_to_iso
+
+        result = safe_datetime_to_iso(123)
+        assert result == '123'
+
+        result = safe_datetime_to_iso(['list'])
+        assert result == "['list']"
