@@ -27,6 +27,30 @@ from pydantic import Field
 from typing import Any, Dict, List, Optional, Union
 
 
+def _json_serializer(obj):
+    """JSON serializer for objects not serializable by default json code."""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f'Object of type {type(obj)} is not JSON serializable')
+
+
+def _safe_json_dumps(data: Any, **kwargs) -> str:
+    """Safely serialize data to JSON, handling datetime objects."""
+    return json.dumps(data, default=_json_serializer, **kwargs)
+
+
+def _convert_datetime_to_string(obj):
+    """Recursively convert datetime objects to ISO strings in nested data structures."""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    elif isinstance(obj, dict):
+        return {key: _convert_datetime_to_string(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [_convert_datetime_to_string(item) for item in obj]
+    else:
+        return obj
+
+
 def _normalize_run_ids(run_ids: Union[List[str], str]) -> List[str]:
     """Normalize run_ids parameter to a list of strings.
 
@@ -125,7 +149,7 @@ Please analyze the following AWS HealthOmics workflow run data and provide compr
 ## Detailed Run and Task Metrics
 
 ```json
-{json.dumps(analysis_data, indent=2)}
+{_safe_json_dumps(analysis_data, indent=2)}
 ```
 
 ## Analysis Instructions
@@ -240,7 +264,8 @@ async def _get_run_analysis_data(run_ids: List[str]) -> Dict[str, Any]:
                 # Continue with other runs rather than failing completely
                 continue
 
-        return analysis_results
+        # Convert any remaining datetime objects to strings before returning
+        return _convert_datetime_to_string(analysis_results)
 
     except Exception as e:
         logger.error(f'Error getting run analysis data: {str(e)}')
@@ -252,15 +277,23 @@ async def _parse_manifest_for_analysis(
 ) -> Optional[Dict[str, Any]]:
     """Parse manifest logs to extract key metrics for analysis."""
     try:
+        # Helper function to convert datetime to ISO string
+        def datetime_to_iso(dt):
+            if dt is None:
+                return ''
+            if isinstance(dt, datetime):
+                return dt.isoformat()
+            return str(dt)
+
         # Extract basic run information
         run_info = {
             'runId': run_id,
             'runName': run_response.get('name', ''),
             'status': run_response.get('status', ''),
             'workflowId': run_response.get('workflowId', ''),
-            'creationTime': run_response.get('creationTime', ''),
-            'startTime': run_response.get('startTime', ''),
-            'stopTime': run_response.get('stopTime', ''),
+            'creationTime': datetime_to_iso(run_response.get('creationTime')),
+            'startTime': datetime_to_iso(run_response.get('startTime')),
+            'stopTime': datetime_to_iso(run_response.get('stopTime')),
             'runOutputUri': run_response.get('runOutputUri', ''),
         }
 
@@ -342,7 +375,7 @@ async def _parse_manifest_for_analysis(
             else 0
         )
 
-        return {
+        result = {
             'runInfo': run_info,
             'runDetails': run_details,
             'taskMetrics': task_metrics,
@@ -357,6 +390,9 @@ async def _parse_manifest_for_analysis(
                 'manifestLogCount': len(log_events),
             },
         }
+
+        # Convert any datetime objects to strings before returning
+        return _convert_datetime_to_string(result)
 
     except Exception as e:
         logger.error(f'Error parsing manifest for run {run_id}: {str(e)}')

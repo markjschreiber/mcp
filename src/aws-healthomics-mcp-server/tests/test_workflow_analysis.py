@@ -17,7 +17,9 @@
 import botocore.exceptions
 import pytest
 from awslabs.aws_healthomics_mcp_server.prompts.workflow_analysis import (
+    _convert_datetime_to_string,
     _normalize_run_ids,
+    _safe_json_dumps,
 )
 from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import (
     _get_logs_from_stream,
@@ -700,3 +702,60 @@ class TestNormalizeRunIds:
         input_json = '[123, "run2", 456]'
         result = _normalize_run_ids(input_json)
         assert result == ['123', 'run2', '456']
+
+
+class TestDatetimeConversion:
+    """Test cases for datetime conversion functions."""
+
+    def test_convert_datetime_to_string_simple(self):
+        """Test conversion of simple datetime object."""
+        from datetime import datetime, timezone
+
+        dt = datetime(2023, 12, 25, 10, 30, 45, tzinfo=timezone.utc)
+        result = _convert_datetime_to_string(dt)
+        assert result == '2023-12-25T10:30:45+00:00'
+
+    def test_convert_datetime_to_string_dict(self):
+        """Test conversion of datetime objects in dictionary."""
+        from datetime import datetime, timezone
+
+        dt = datetime(2023, 12, 25, 10, 30, 45, tzinfo=timezone.utc)
+        data = {'name': 'test', 'creationTime': dt, 'count': 42}
+        result = _convert_datetime_to_string(data)
+        assert result == {'name': 'test', 'creationTime': '2023-12-25T10:30:45+00:00', 'count': 42}
+
+    def test_convert_datetime_to_string_nested(self):
+        """Test conversion of datetime objects in nested structures."""
+        from datetime import datetime, timezone
+
+        dt1 = datetime(2023, 12, 25, 10, 30, 45, tzinfo=timezone.utc)
+        dt2 = datetime(2023, 12, 26, 11, 31, 46, tzinfo=timezone.utc)
+        data = {
+            'runs': [{'id': 'run1', 'startTime': dt1}, {'id': 'run2', 'startTime': dt2}],
+            'summary': {'analysisTime': dt1},
+        }
+        result = _convert_datetime_to_string(data)
+        expected = {
+            'runs': [
+                {'id': 'run1', 'startTime': '2023-12-25T10:30:45+00:00'},
+                {'id': 'run2', 'startTime': '2023-12-26T11:31:46+00:00'},
+            ],
+            'summary': {'analysisTime': '2023-12-25T10:30:45+00:00'},
+        }
+        assert result == expected
+
+    def test_safe_json_dumps_with_datetime(self):
+        """Test that safe JSON dumps handles datetime objects."""
+        from datetime import datetime, timezone
+
+        dt = datetime(2023, 12, 25, 10, 30, 45, tzinfo=timezone.utc)
+        data = {'timestamp': dt, 'value': 123}
+        result = _safe_json_dumps(data)
+        expected_json = '{"timestamp": "2023-12-25T10:30:45+00:00", "value": 123}'
+        assert result == expected_json
+
+    def test_convert_datetime_to_string_no_change(self):
+        """Test that non-datetime objects are not changed."""
+        data = {'string': 'test', 'number': 42, 'boolean': True, 'null': None}
+        result = _convert_datetime_to_string(data)
+        assert result == data
