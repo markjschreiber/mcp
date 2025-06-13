@@ -19,9 +19,9 @@ import botocore.exceptions
 import os
 from awslabs.aws_healthomics_mcp_server.consts import DEFAULT_REGION
 from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import (
-    get_run_engine_logs,
-    get_run_manifest_logs,
-    get_task_logs,
+    get_run_engine_logs_internal,
+    get_run_manifest_logs_internal,
+    get_task_logs_internal,
 )
 from awslabs.aws_healthomics_mcp_server.utils.aws_utils import get_aws_session
 from loguru import logger
@@ -98,8 +98,7 @@ async def diagnose_run_failure(
         # Get engine logs using the workflow_analysis function
         engine_logs = []
         try:
-            engine_logs_response = await get_run_engine_logs(
-                ctx=ctx,
+            engine_logs_response = await get_run_engine_logs_internal(
                 run_id=run_id,
                 limit=100,
                 start_from_head=False,  # Get the most recent logs
@@ -119,8 +118,7 @@ async def diagnose_run_failure(
         manifest_logs = []
         if run_uuid:
             try:
-                manifest_logs_response = await get_run_manifest_logs(
-                    ctx=ctx,
+                manifest_logs_response = await get_run_manifest_logs_internal(
                     run_id=run_id,
                     run_uuid=run_uuid,
                     limit=100,
@@ -165,8 +163,7 @@ async def diagnose_run_failure(
                 # Get task logs using the workflow_analysis function
                 task_logs = []
                 try:
-                    task_logs_response = await get_task_logs(
-                        ctx=ctx,
+                    task_logs_response = await get_task_logs_internal(
                         run_id=run_id,
                         task_id=task_id,
                         limit=100,  # Get more logs per task
@@ -214,21 +211,28 @@ async def diagnose_run_failure(
             'Check for network connectivity issues if tasks failed during data transfer',
         ]
 
+        # Helper function to safely convert datetime objects to ISO format
+        def safe_datetime_to_iso(dt_obj):
+            """Safely convert datetime object to ISO format string."""
+            if dt_obj is None:
+                return None
+            if hasattr(dt_obj, 'isoformat'):
+                return dt_obj.isoformat()
+            # If it's already a string, return as-is
+            if isinstance(dt_obj, str):
+                return dt_obj
+            # For any other type, convert to string
+            return str(dt_obj)
+
         # Compile comprehensive diagnostic information
         diagnosis = {
             'runId': run_id,
             'runUuid': run_uuid,
             'status': run_response.get('status'),
             'failureReason': failure_reason,
-            'creationTime': run_response.get('creationTime').isoformat()
-            if hasattr(run_response.get('creationTime'), 'isoformat')
-            else run_response.get('creationTime'),
-            'startTime': run_response.get('startTime').isoformat()
-            if hasattr(run_response.get('startTime'), 'isoformat')
-            else run_response.get('startTime'),
-            'stopTime': run_response.get('stopTime').isoformat()
-            if hasattr(run_response.get('stopTime'), 'isoformat')
-            else run_response.get('stopTime'),
+            'creationTime': safe_datetime_to_iso(run_response.get('creationTime')),
+            'startTime': safe_datetime_to_iso(run_response.get('startTime')),
+            'stopTime': safe_datetime_to_iso(run_response.get('stopTime')),
             'workflowId': run_response.get('workflowId'),
             'workflowType': run_response.get('workflowType'),
             'engineLogs': engine_logs,
@@ -247,9 +251,6 @@ async def diagnose_run_failure(
                 ),
                 'hasEngineLogs': len(engine_logs) > 0
                 and 'Error retrieving engine logs' not in str(engine_logs),
-                'diagnosisTimestamp': ctx.session.request_id
-                if hasattr(ctx, 'session')
-                else 'unknown',
             },
         }
 

@@ -134,15 +134,17 @@ class TestDiagnoseRunFailure:
     """Test the diagnose_run_failure function."""
 
     @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_omics_client')
-    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs')
-    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_manifest_logs')
-    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_task_logs')
+    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs_internal')
+    @patch(
+        'awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_manifest_logs_internal'
+    )
+    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_task_logs_internal')
     @pytest.mark.asyncio
     async def test_diagnose_run_failure_success(
         self,
-        mock_get_task_logs,
-        mock_get_run_manifest_logs,
-        mock_get_run_engine_logs,
+        mock_get_task_logs_internal,
+        mock_get_run_manifest_logs_internal,
+        mock_get_run_engine_logs_internal,
         mock_get_omics_client,
         mock_context,
         sample_failed_run_response,
@@ -157,9 +159,9 @@ class TestDiagnoseRunFailure:
         mock_client.list_run_tasks.return_value = sample_failed_tasks
 
         # Mock log responses
-        mock_get_run_engine_logs.return_value = sample_log_events
-        mock_get_run_manifest_logs.return_value = sample_log_events
-        mock_get_task_logs.return_value = sample_log_events
+        mock_get_run_engine_logs_internal.return_value = sample_log_events
+        mock_get_run_manifest_logs_internal.return_value = sample_log_events
+        mock_get_task_logs_internal.return_value = sample_log_events
 
         # Act
         result = await diagnose_run_failure(
@@ -205,16 +207,14 @@ class TestDiagnoseRunFailure:
         )
 
         # Verify log function calls with correct parameters
-        mock_get_run_engine_logs.assert_called_once_with(
-            ctx=mock_context,
+        mock_get_run_engine_logs_internal.assert_called_once_with(
             run_id='run-12345',
             limit=100,
             start_from_head=False,
         )
 
         # Verify manifest log call
-        mock_get_run_manifest_logs.assert_called_once_with(
-            ctx=mock_context,
+        mock_get_run_manifest_logs_internal.assert_called_once_with(
             run_id='run-12345',
             run_uuid='uuid-abcd-1234',
             limit=100,
@@ -222,16 +222,14 @@ class TestDiagnoseRunFailure:
         )
 
         # Verify task log calls
-        assert mock_get_task_logs.call_count == 2
-        mock_get_task_logs.assert_any_call(
-            ctx=mock_context,
+        assert mock_get_task_logs_internal.call_count == 2
+        mock_get_task_logs_internal.assert_any_call(
             run_id='run-12345',
             task_id='task-111',
             limit=100,  # Updated to 100
             start_from_head=False,
         )
-        mock_get_task_logs.assert_any_call(
-            ctx=mock_context,
+        mock_get_task_logs_internal.assert_any_call(
             run_id='run-12345',
             task_id='task-222',
             limit=100,  # Updated to 100
@@ -267,11 +265,11 @@ class TestDiagnoseRunFailure:
         mock_client.list_run_tasks.assert_not_called()
 
     @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_omics_client')
-    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs')
+    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs_internal')
     @pytest.mark.asyncio
     async def test_diagnose_run_failure_no_uuid(
         self,
-        mock_get_run_engine_logs,
+        mock_get_run_engine_logs_internal,
         mock_get_omics_client,
         mock_context,
         sample_log_events,
@@ -291,7 +289,7 @@ class TestDiagnoseRunFailure:
         }
         mock_client.get_run.return_value = run_response
         mock_client.list_run_tasks.return_value = {'items': [], 'nextToken': None}
-        mock_get_run_engine_logs.return_value = sample_log_events
+        mock_get_run_engine_logs_internal.return_value = sample_log_events
 
         # Act
         result = await diagnose_run_failure(
@@ -308,13 +306,15 @@ class TestDiagnoseRunFailure:
         assert result['summary']['hasManifestLogs'] is False
 
     @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_omics_client')
-    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs')
-    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_manifest_logs')
+    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs_internal')
+    @patch(
+        'awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_manifest_logs_internal'
+    )
     @pytest.mark.asyncio
     async def test_diagnose_run_failure_engine_logs_error(
         self,
-        mock_get_run_manifest_logs,
-        mock_get_run_engine_logs,
+        mock_get_run_manifest_logs_internal,
+        mock_get_run_engine_logs_internal,
         mock_get_omics_client,
         mock_context,
         sample_failed_run_response,
@@ -332,8 +332,8 @@ class TestDiagnoseRunFailure:
         }  # No failed tasks
 
         # Mock engine logs to raise an exception, but manifest logs succeed
-        mock_get_run_engine_logs.side_effect = Exception('Log retrieval failed')
-        mock_get_run_manifest_logs.return_value = sample_log_events
+        mock_get_run_engine_logs_internal.side_effect = Exception('Log retrieval failed')
+        mock_get_run_manifest_logs_internal.return_value = sample_log_events
 
         # Act
         result = await diagnose_run_failure(
@@ -350,13 +350,13 @@ class TestDiagnoseRunFailure:
         assert len(result['failedTasks']) == 0
 
     @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_omics_client')
-    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs')
-    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_task_logs')
+    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs_internal')
+    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_task_logs_internal')
     @pytest.mark.asyncio
     async def test_diagnose_run_failure_task_logs_error(
         self,
-        mock_get_task_logs,
-        mock_get_run_engine_logs,
+        mock_get_task_logs_internal,
+        mock_get_run_engine_logs_internal,
         mock_get_omics_client,
         mock_context,
         sample_failed_run_response,
@@ -371,8 +371,8 @@ class TestDiagnoseRunFailure:
         mock_client.list_run_tasks.return_value = sample_failed_tasks
 
         # Mock successful engine logs but failed task logs
-        mock_get_run_engine_logs.return_value = sample_log_events
-        mock_get_task_logs.side_effect = Exception('Task log retrieval failed')
+        mock_get_run_engine_logs_internal.return_value = sample_log_events
+        mock_get_task_logs_internal.side_effect = Exception('Task log retrieval failed')
 
         # Act
         result = await diagnose_run_failure(
@@ -446,11 +446,11 @@ class TestDiagnoseRunFailure:
         assert 'run-12345' in error_call_args
 
     @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_omics_client')
-    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs')
+    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs_internal')
     @pytest.mark.asyncio
     async def test_diagnose_run_failure_no_failure_reason(
         self,
-        mock_get_run_engine_logs,
+        mock_get_run_engine_logs_internal,
         mock_get_omics_client,
         mock_context,
         sample_log_events,
@@ -469,7 +469,7 @@ class TestDiagnoseRunFailure:
         }
         mock_client.get_run.return_value = run_response
         mock_client.list_run_tasks.return_value = {'items': []}
-        mock_get_run_engine_logs.return_value = sample_log_events
+        mock_get_run_engine_logs_internal.return_value = sample_log_events
 
         # Act
         result = await diagnose_run_failure(
@@ -481,11 +481,11 @@ class TestDiagnoseRunFailure:
         assert result['failureReason'] == 'No failure reason provided'
 
     @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_omics_client')
-    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs')
+    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs_internal')
     @pytest.mark.asyncio
     async def test_diagnose_run_failure_recommendations_included(
         self,
-        mock_get_run_engine_logs,
+        mock_get_run_engine_logs_internal,
         mock_get_omics_client,
         mock_context,
         sample_failed_run_response,
@@ -497,7 +497,7 @@ class TestDiagnoseRunFailure:
         mock_get_omics_client.return_value = mock_client
         mock_client.get_run.return_value = sample_failed_run_response
         mock_client.list_run_tasks.return_value = {'items': []}
-        mock_get_run_engine_logs.return_value = sample_log_events
+        mock_get_run_engine_logs_internal.return_value = sample_log_events
 
         # Act
         result = await diagnose_run_failure(
@@ -520,13 +520,15 @@ class TestDiagnoseRunFailure:
         assert 'resource allocation' in recommendation_text  # New enhanced recommendation
 
     @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_omics_client')
-    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs')
-    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_manifest_logs')
+    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs_internal')
+    @patch(
+        'awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_manifest_logs_internal'
+    )
     @pytest.mark.asyncio
     async def test_diagnose_run_failure_manifest_logs_error(
         self,
-        mock_get_run_manifest_logs,
-        mock_get_run_engine_logs,
+        mock_get_run_manifest_logs_internal,
+        mock_get_run_engine_logs_internal,
         mock_get_omics_client,
         mock_context,
         sample_failed_run_response,
@@ -540,8 +542,10 @@ class TestDiagnoseRunFailure:
         mock_client.list_run_tasks.return_value = {'items': [], 'nextToken': None}
 
         # Mock successful engine logs but failed manifest logs
-        mock_get_run_engine_logs.return_value = sample_log_events
-        mock_get_run_manifest_logs.side_effect = Exception('Manifest log retrieval failed')
+        mock_get_run_engine_logs_internal.return_value = sample_log_events
+        mock_get_run_manifest_logs_internal.side_effect = Exception(
+            'Manifest log retrieval failed'
+        )
 
         # Act
         result = await diagnose_run_failure(
@@ -557,13 +561,15 @@ class TestDiagnoseRunFailure:
         assert result['summary']['hasManifestLogs'] is False
 
     @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_omics_client')
-    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs')
-    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_manifest_logs')
+    @patch('awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_engine_logs_internal')
+    @patch(
+        'awslabs.aws_healthomics_mcp_server.tools.troubleshooting.get_run_manifest_logs_internal'
+    )
     @pytest.mark.asyncio
     async def test_diagnose_run_failure_pagination_multiple_tasks(
         self,
-        mock_get_run_manifest_logs,
-        mock_get_run_engine_logs,
+        mock_get_run_manifest_logs_internal,
+        mock_get_run_engine_logs_internal,
         mock_get_omics_client,
         mock_context,
         sample_failed_run_response,
@@ -601,8 +607,8 @@ class TestDiagnoseRunFailure:
         mock_client.list_run_tasks.side_effect = [first_page, second_page]
 
         # Mock log responses
-        mock_get_run_engine_logs.return_value = sample_log_events
-        mock_get_run_manifest_logs.return_value = sample_log_events
+        mock_get_run_engine_logs_internal.return_value = sample_log_events
+        mock_get_run_manifest_logs_internal.return_value = sample_log_events
 
         # Act
         result = await diagnose_run_failure(

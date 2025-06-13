@@ -22,6 +22,8 @@ import subprocess
 import tempfile
 from awslabs.aws_healthomics_mcp_server.consts import DEFAULT_REGION
 from awslabs.aws_healthomics_mcp_server.utils.aws_utils import get_aws_session
+from botocore.exceptions import ClientError
+from datetime import datetime, timezone
 from loguru import logger
 from mcp.server.fastmcp import Context
 from pydantic import Field
@@ -164,8 +166,6 @@ async def _get_logs_from_stream(
     Returns:
         Dictionary containing log events and next token if available
     """
-    from datetime import datetime, timezone
-
     params = {
         'logGroupName': log_group_name,
         'logStreamName': log_stream_name,
@@ -177,11 +177,15 @@ async def _get_logs_from_stream(
         params['nextToken'] = next_token
 
     if start_time:
-        start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+        # Ensure start_time is a string before calling replace
+        start_time_str = str(start_time) if not isinstance(start_time, str) else start_time
+        start_dt = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
         params['startTime'] = int(start_dt.timestamp() * 1000)
 
     if end_time:
-        end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+        # Ensure end_time is a string before calling replace
+        end_time_str = str(end_time) if not isinstance(end_time, str) else end_time
+        end_dt = datetime.fromisoformat(end_time_str.replace('Z', '+00:00'))
         params['endTime'] = int(end_dt.timestamp() * 1000)
 
     response = client.get_log_events(**params)
@@ -285,6 +289,74 @@ async def get_run_logs(
         error_message = f'Unexpected error retrieving run logs for run {run_id}: {str(e)}'
         logger.error(error_message)
         await ctx.error(error_message)
+        raise
+
+
+async def _get_run_manifest_logs_internal(
+    run_id: str,
+    run_uuid: str,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    limit: int = 100,
+    next_token: Optional[str] = None,
+    start_from_head: bool = True,
+) -> Dict[str, Any]:
+    """Internal function to get run manifest logs without Pydantic Field decorators."""
+    try:
+        client = get_logs_client()
+        log_group_name = f'/aws/omics/WorkflowLog/{run_uuid}'
+
+        params = {
+            'logGroupName': log_group_name,
+            'limit': limit,
+            'startFromHead': start_from_head,
+        }
+
+        if next_token:
+            params['nextToken'] = next_token
+
+        if start_time:
+            # Ensure start_time is a string before calling replace
+            start_time_str = str(start_time) if not isinstance(start_time, str) else start_time
+            start_dt = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
+            params['startTime'] = int(start_dt.timestamp() * 1000)
+
+        if end_time:
+            # Ensure end_time is a string before calling replace
+            end_time_str = str(end_time) if not isinstance(end_time, str) else end_time
+            end_dt = datetime.fromisoformat(end_time_str.replace('Z', '+00:00'))
+            params['endTime'] = int(end_dt.timestamp() * 1000)
+
+        response = client.get_log_events(**params)
+
+        # Transform the response to a more user-friendly format
+        events = []
+        for event in response.get('events', []):
+            timestamp_ms = event.get('timestamp', 0)
+            timestamp_dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
+            events.append(
+                {
+                    'timestamp': timestamp_dt.isoformat().replace('+00:00', 'Z'),
+                    'message': event.get('message', ''),
+                }
+            )
+
+        return {
+            'events': events,
+            'nextForwardToken': response.get('nextForwardToken'),
+            'nextBackwardToken': response.get('nextBackwardToken'),
+        }
+
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == 'ResourceNotFoundException':
+            logger.warning(f'Log group not found for run UUID {run_uuid}')
+            return {'events': [], 'error': 'Log group not found'}
+        else:
+            logger.error(f'AWS error retrieving manifest logs: {str(e)}')
+            raise
+    except Exception as e:
+        logger.error(f'Error retrieving manifest logs: {str(e)}')
         raise
 
 
@@ -540,4 +612,98 @@ async def get_task_logs(
         )
         logger.error(error_message)
         await ctx.error(error_message)
+        raise
+
+
+# Internal wrapper functions for use by other modules (without Pydantic Field decorators)
+
+
+async def get_run_manifest_logs_internal(
+    run_id: str,
+    run_uuid: str,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    limit: int = 100,
+    next_token: Optional[str] = None,
+    start_from_head: bool = True,
+) -> Dict[str, Any]:
+    """Internal wrapper for get_run_manifest_logs without Pydantic Field decorators."""
+    client = get_logs_client()
+    log_group_name = '/aws/omics/WorkflowLog'
+    log_stream_name = f'manifest/run/{run_id}/{run_uuid}' if run_uuid else f'manifest/run/{run_id}'
+
+    try:
+        return await _get_logs_from_stream(
+            client,
+            log_group_name,
+            log_stream_name,
+            start_time,
+            end_time,
+            limit,
+            next_token,
+            start_from_head,
+        )
+    except Exception as e:
+        logger.error(f'Error retrieving manifest logs: {str(e)}')
+        raise
+
+
+async def get_run_engine_logs_internal(
+    run_id: str,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    limit: int = 100,
+    next_token: Optional[str] = None,
+    start_from_head: bool = True,
+) -> Dict[str, Any]:
+    """Internal wrapper for get_run_engine_logs without Pydantic Field decorators."""
+    client = get_logs_client()
+    log_group_name = '/aws/omics/WorkflowLog'
+    log_stream_name = (
+        f'run/{run_id}/engine'  # Fixed: should be run/{run_id}/engine, not engine/run/{run_id}
+    )
+
+    try:
+        return await _get_logs_from_stream(
+            client,
+            log_group_name,
+            log_stream_name,
+            start_time,
+            end_time,
+            limit,
+            next_token,
+            start_from_head,
+        )
+    except Exception as e:
+        logger.error(f'Error retrieving engine logs: {str(e)}')
+        raise
+
+
+async def get_task_logs_internal(
+    run_id: str,
+    task_id: str,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    limit: int = 100,
+    next_token: Optional[str] = None,
+    start_from_head: bool = True,
+) -> Dict[str, Any]:
+    """Internal wrapper for get_task_logs without Pydantic Field decorators."""
+    client = get_logs_client()
+    log_group_name = '/aws/omics/WorkflowLog'
+    log_stream_name = f'run/{run_id}/task/{task_id}'  # Fixed: should be run/{run_id}/task/{task_id}, not task/run/{run_id}/{task_id}
+
+    try:
+        return await _get_logs_from_stream(
+            client,
+            log_group_name,
+            log_stream_name,
+            start_time,
+            end_time,
+            limit,
+            next_token,
+            start_from_head,
+        )
+    except Exception as e:
+        logger.error(f'Error retrieving task logs: {str(e)}')
         raise
