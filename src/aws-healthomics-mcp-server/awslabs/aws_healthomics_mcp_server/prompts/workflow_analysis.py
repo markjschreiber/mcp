@@ -23,13 +23,11 @@ from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import (
 from awslabs.aws_healthomics_mcp_server.utils.aws_utils import get_aws_session
 from datetime import datetime, timezone
 from loguru import logger
-from mcp.server.fastmcp import Context
 from pydantic import Field
 from typing import Any, Dict, List, Optional
 
 
 async def optimize_runs_prompt(
-    ctx: Context,
     run_ids: List[str] = Field(
         ...,
         description='List of run IDs to analyze for resource optimization',
@@ -57,7 +55,7 @@ async def optimize_runs_prompt(
         logger.info(f'Generating analysis prompt for runs {run_ids}')
 
         # Get the structured analysis data
-        analysis_data = await _get_run_analysis_data(run_ids, ctx)
+        analysis_data = await _get_run_analysis_data(run_ids)
 
         if not analysis_data or not analysis_data.get('runs'):
             return f"""
@@ -143,7 +141,6 @@ Please provide specific, actionable recommendations with quantified benefits and
     except Exception as e:
         error_message = f'Error generating analysis prompt: {str(e)}'
         logger.error(error_message)
-        await ctx.error(error_message)
         return f"""
 Error generating analysis prompt for runs {run_ids}: {str(e)}
 
@@ -151,7 +148,7 @@ Please check the run IDs and try again. If the issue persists, the runs may stil
 """
 
 
-async def _get_run_analysis_data(run_ids: List[str], ctx: Context) -> Dict[str, Any]:
+async def _get_run_analysis_data(run_ids: List[str]) -> Dict[str, Any]:
     """Get structured analysis data for the specified runs."""
     try:
         # Get AWS session and clients
@@ -190,7 +187,7 @@ async def _get_run_analysis_data(run_ids: List[str], ctx: Context) -> Dict[str, 
 
                 # Parse and structure the manifest data
                 run_analysis = await _parse_manifest_for_analysis(
-                    run_id, run_response, manifest_logs, ctx
+                    run_id, run_response, manifest_logs
                 )
 
                 if run_analysis:
@@ -205,12 +202,11 @@ async def _get_run_analysis_data(run_ids: List[str], ctx: Context) -> Dict[str, 
 
     except Exception as e:
         logger.error(f'Error getting run analysis data: {str(e)}')
-        await ctx.error(f'Error getting run analysis data: {str(e)}')
         return {}
 
 
 async def _parse_manifest_for_analysis(
-    run_id: str, run_response: Dict[str, Any], manifest_logs: Dict[str, Any], ctx: Context
+    run_id: str, run_response: Dict[str, Any], manifest_logs: Dict[str, Any]
 ) -> Optional[Dict[str, Any]]:
     """Parse manifest logs to extract key metrics for analysis."""
     try:
@@ -322,7 +318,6 @@ async def _parse_manifest_for_analysis(
 
     except Exception as e:
         logger.error(f'Error parsing manifest for run {run_id}: {str(e)}')
-        await ctx.error(f'Error parsing manifest for run {run_id}: {str(e)}')
         return None
 
 
