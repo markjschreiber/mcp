@@ -14,7 +14,7 @@
 
 """awslabs aws-healthomics MCP Server implementation."""
 
-from awslabs.aws_healthomics_mcp_server.prompts.workflow_analysis import analyze_runs_prompt
+from awslabs.aws_healthomics_mcp_server.prompts.workflow_analysis import optimize_runs_prompt
 from awslabs.aws_healthomics_mcp_server.tools.helper_tools import (
     get_supported_regions,
     package_workflow,
@@ -73,9 +73,6 @@ This MCP server provides tools for creating, managing, and analyzing genomic wor
 - **GetRunEngineLogs**: Retrieve engine logs containing STDOUT and STDERR
 - **GetTaskLogs**: Retrieve logs for specific workflow tasks
 
-### Workflow Analysis Prompts
-- **analyze_healthomics_runs**: Generate a prompt to facilitate AI-powered analysis of workflow run performance using manifest data
-
 ### Troubleshooting
 - **DiagnoseRunFailure**: Diagnose a failed workflow run
 
@@ -85,6 +82,10 @@ This MCP server provides tools for creating, managing, and analyzing genomic wor
 
 ## Service Availability
 AWS HealthOmics is available in select AWS regions. Use the GetSupportedRegions tool to get the current list of supported regions.
+
+## Available Prompts
+### Workflow Analysis Prompts
+- **OptimizeHealthOmicsRuns**: Generate a prompt to facilitate AI-powered analysis of workflow run performance using manifest data
 """,
     dependencies=[
         'boto3',
@@ -114,7 +115,7 @@ mcp.tool(name='GetRunEngineLogs')(get_run_engine_logs)
 mcp.tool(name='GetTaskLogs')(get_task_logs)
 
 # Register workflow analysis prompts
-mcp.prompt(name='analyze_healthomics_runs')(analyze_runs_prompt)
+mcp.prompt(name='OptimizeHealthOmicsRuns')(optimize_runs_prompt)
 
 # Register troubleshooting tools
 mcp.tool(name='DiagnoseRunFailure')(diagnose_run_failure)

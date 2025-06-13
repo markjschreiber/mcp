@@ -28,14 +28,14 @@ from pydantic import Field
 from typing import Any, Dict, List, Optional
 
 
-async def analyze_runs_prompt(
+async def optimize_runs_prompt(
     ctx: Context,
     run_ids: List[str] = Field(
         ...,
-        description='List of run IDs to analyze for performance optimization',
+        description='List of run IDs to analyze for resource optimization',
     ),
 ) -> str:
-    """Generate analysis prompt with AWS HealthOmics run manifest data.
+    """The user wants to optimize resources used in a run or list of runs.
 
     This prompt retrieves run manifest logs containing detailed task metrics
     and returns structured data with analysis instructions for AI-powered insights.
