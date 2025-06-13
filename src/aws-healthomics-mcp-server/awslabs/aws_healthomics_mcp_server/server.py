@@ -14,13 +14,13 @@
 
 """awslabs aws-healthomics MCP Server implementation."""
 
+from awslabs.aws_healthomics_mcp_server.prompts.workflow_analysis import analyze_runs_prompt
 from awslabs.aws_healthomics_mcp_server.tools.helper_tools import (
     get_supported_regions,
     package_workflow,
 )
 from awslabs.aws_healthomics_mcp_server.tools.troubleshooting import diagnose_run_failure
 from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import (
-    analyze_run,
     get_run_engine_logs,
     get_run_logs,
     get_run_manifest_logs,
@@ -68,11 +68,13 @@ This MCP server provides tools for creating, managing, and analyzing genomic wor
 - **GetRunTask**: Get details about a specific task
 
 ### Workflow Analysis
-- **AnalyzeRun**: Analyze run performance using the run analyzer
 - **GetRunLogs**: Retrieve high-level run logs showing workflow execution events
 - **GetRunManifestLogs**: Retrieve run manifest logs with workflow summary
 - **GetRunEngineLogs**: Retrieve engine logs containing STDOUT and STDERR
 - **GetTaskLogs**: Retrieve logs for specific workflow tasks
+
+### Workflow Analysis Prompts
+- **analyze_healthomics_runs**: Generate a prompt to facilitate AI-powered analysis of workflow run performance using manifest data
 
 ### Troubleshooting
 - **DiagnoseRunFailure**: Diagnose a failed workflow run
@@ -106,11 +108,13 @@ mcp.tool(name='ListRunTasks')(list_run_tasks)
 mcp.tool(name='GetRunTask')(get_run_task)
 
 # Register workflow analysis tools
-mcp.tool(name='AnalyzeRun')(analyze_run)
 mcp.tool(name='GetRunLogs')(get_run_logs)
 mcp.tool(name='GetRunManifestLogs')(get_run_manifest_logs)
 mcp.tool(name='GetRunEngineLogs')(get_run_engine_logs)
 mcp.tool(name='GetTaskLogs')(get_task_logs)
+
+# Register workflow analysis prompts
+mcp.prompt(name='analyze_healthomics_runs')(analyze_runs_prompt)
 
 # Register troubleshooting tools
 mcp.tool(name='DiagnoseRunFailure')(diagnose_run_failure)
