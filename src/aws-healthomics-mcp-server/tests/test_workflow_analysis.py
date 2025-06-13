@@ -65,135 +65,7 @@ def sample_log_events():
     ]
 
 
-class TestGetLogsFromStream:
-    """Test the helper function _get_logs_from_stream."""
-
-    @pytest.mark.asyncio
-    async def test_get_logs_from_stream_basic(self, mock_logs_client, sample_log_events):
-        """Test basic log retrieval functionality."""
-        # Arrange
-        mock_logs_client.get_log_events.return_value = {
-            'events': sample_log_events,
-            'nextForwardToken': 'next-token-123',
-        }
-
-        # Act
-        result = await _get_logs_from_stream(
-            client=mock_logs_client,
-            log_group_name='/aws/omics/WorkflowLog',
-            log_stream_name='run/12345',
-            limit=100,
-        )
-
-        # Assert
-        assert 'events' in result
-        assert 'nextToken' in result
-        assert len(result['events']) == 3
-        assert result['nextToken'] == 'next-token-123'
-
-        # Check event transformation
-        first_event = result['events'][0]
-        assert 'timestamp' in first_event
-        assert 'message' in first_event
-        assert first_event['message'] == 'Starting workflow execution'
-        # The timestamp should be converted from milliseconds to UTC ISO format
-        # 1640995200000 ms = 2022-01-01T00:00:00Z UTC
-        assert first_event['timestamp'] == '2022-01-01T00:00:00Z'
-
-        # Verify API call
-        mock_logs_client.get_log_events.assert_called_once_with(
-            logGroupName='/aws/omics/WorkflowLog',
-            logStreamName='run/12345',
-            limit=100,
-            startFromHead=True,
-        )
-
-    @pytest.mark.asyncio
-    async def test_get_logs_from_stream_with_time_filters(
-        self, mock_logs_client, sample_log_events
-    ):
-        """Test log retrieval with time filters."""
-        # Arrange
-        mock_logs_client.get_log_events.return_value = {
-            'events': sample_log_events,
-        }
-
-        start_time = '2022-01-01T00:00:00Z'
-        end_time = '2022-01-01T00:05:00Z'
-
-        # Act
-        result = await _get_logs_from_stream(
-            client=mock_logs_client,
-            log_group_name='/aws/omics/WorkflowLog',
-            log_stream_name='run/12345',
-            start_time=start_time,
-            end_time=end_time,
-            limit=50,
-            start_from_head=False,
-        )
-
-        # Assert
-        assert 'events' in result
-        assert len(result['events']) == 3
-
-        # Verify API call with time parameters
-        call_args = mock_logs_client.get_log_events.call_args[1]
-        assert call_args['logGroupName'] == '/aws/omics/WorkflowLog'
-        assert call_args['logStreamName'] == 'run/12345'
-        assert call_args['limit'] == 50
-        assert call_args['startFromHead'] is False
-        assert 'startTime' in call_args
-        assert 'endTime' in call_args
-
-    @pytest.mark.asyncio
-    async def test_get_logs_from_stream_with_next_token(self, mock_logs_client, sample_log_events):
-        """Test log retrieval with pagination token."""
-        # Arrange
-        mock_logs_client.get_log_events.return_value = {
-            'events': sample_log_events,
-        }
-
-        # Act
-        result = await _get_logs_from_stream(
-            client=mock_logs_client,
-            log_group_name='/aws/omics/WorkflowLog',
-            log_stream_name='run/12345',
-            next_token='existing-token-456',
-        )
-
-        # Assert
-        assert 'events' in result
-
-        # Verify API call includes next token
-        mock_logs_client.get_log_events.assert_called_once_with(
-            logGroupName='/aws/omics/WorkflowLog',
-            logStreamName='run/12345',
-            limit=100,
-            startFromHead=True,
-            nextToken='existing-token-456',
-        )
-
-    @pytest.mark.asyncio
-    async def test_get_logs_from_stream_no_next_token_in_response(
-        self, mock_logs_client, sample_log_events
-    ):
-        """Test log retrieval when response doesn't include next token."""
-        # Arrange
-        mock_logs_client.get_log_events.return_value = {
-            'events': sample_log_events,
-            # No nextForwardToken in response
-        }
-
-        # Act
-        result = await _get_logs_from_stream(
-            client=mock_logs_client,
-            log_group_name='/aws/omics/WorkflowLog',
-            log_stream_name='run/12345',
-        )
-
-        # Assert
-        assert 'events' in result
-        assert 'nextToken' not in result
+# Old TestGetLogsFromStream class removed to avoid duplication
 
 
 class TestGetRunLogs:
@@ -759,3 +631,204 @@ class TestDatetimeConversion:
         data = {'string': 'test', 'number': 42, 'boolean': True, 'null': None}
         result = _convert_datetime_to_string(data)
         assert result == data
+
+
+class TestGetLogsClient:
+    """Test the get_logs_client function."""
+
+    @patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis.get_aws_session')
+    def test_get_logs_client_success(self, mock_get_aws_session):
+        """Test successful CloudWatch Logs client creation."""
+        from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import get_logs_client
+
+        # Arrange
+        mock_session = MagicMock()
+        mock_client = MagicMock()
+        mock_get_aws_session.return_value = mock_session
+        mock_session.client.return_value = mock_client
+
+        # Act
+        result = get_logs_client()
+
+        # Assert
+        assert result == mock_client
+        mock_session.client.assert_called_once_with('logs')
+
+    @patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis.get_aws_session')
+    def test_get_logs_client_failure(self, mock_get_aws_session):
+        """Test CloudWatch Logs client creation failure."""
+        from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import get_logs_client
+
+        # Arrange
+        mock_get_aws_session.side_effect = Exception('AWS session error')
+
+        # Act & Assert
+        with pytest.raises(Exception, match='AWS session error'):
+            get_logs_client()
+
+
+class TestGetLogsFromStream:
+    """Test the _get_logs_from_stream function."""
+
+    @pytest.mark.asyncio
+    async def test_get_logs_from_stream_success(self, sample_log_events):
+        """Test successful log retrieval from stream."""
+        # Arrange
+        mock_client = MagicMock()
+        mock_response = {'events': sample_log_events}
+        mock_client.get_log_events.return_value = mock_response
+
+        # Act
+        result = await _get_logs_from_stream(
+            mock_client,
+            '/aws/omics/WorkflowLog',
+            'run-12345',
+            '2024-01-01T10:00:00Z',
+            '2024-01-01T11:00:00Z',
+            100,
+            None,
+            True,
+        )
+
+        # Assert
+        assert 'events' in result
+        assert len(result['events']) == 3
+        mock_client.get_log_events.assert_called_once_with(
+            logGroupName='/aws/omics/WorkflowLog',
+            logStreamName='run-12345',
+            startTime=1704110400000,  # 2024-01-01T10:00:00Z in milliseconds
+            endTime=1704114000000,  # 2024-01-01T11:00:00Z in milliseconds
+            limit=100,
+            startFromHead=True,
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_logs_from_stream_no_time_filter(self, sample_log_events):
+        """Test log retrieval without time filters."""
+        # Arrange
+        mock_client = MagicMock()
+        mock_response = {'events': sample_log_events}
+        mock_client.get_log_events.return_value = mock_response
+
+        # Act
+        result = await _get_logs_from_stream(
+            mock_client,
+            '/aws/omics/WorkflowLog',
+            'run-12345',
+            None,
+            None,
+            50,
+            None,
+            False,
+        )
+
+        # Assert
+        assert 'events' in result
+        assert len(result['events']) == 3
+        mock_client.get_log_events.assert_called_once_with(
+            logGroupName='/aws/omics/WorkflowLog',
+            logStreamName='run-12345',
+            limit=50,
+            startFromHead=False,
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_logs_from_stream_with_next_token(self, sample_log_events):
+        """Test log retrieval with pagination token."""
+        # Arrange
+        mock_client = MagicMock()
+        mock_response = {'events': sample_log_events, 'nextToken': 'next-token-456'}
+        mock_client.get_log_events.return_value = mock_response
+
+        # Act
+        result = await _get_logs_from_stream(
+            mock_client,
+            '/aws/omics/WorkflowLog',
+            'run-12345',
+            None,
+            None,
+            100,
+            'token123',
+            True,
+        )
+
+        # Assert
+        assert 'events' in result
+        assert 'nextToken' in result
+        assert result['nextToken'] == 'next-token-456'
+        assert len(result['events']) == 3
+        mock_client.get_log_events.assert_called_once_with(
+            logGroupName='/aws/omics/WorkflowLog',
+            logStreamName='run-12345',
+            nextToken='token123',
+            limit=100,
+            startFromHead=True,
+        )
+
+
+class TestGetRunLogsErrorHandling:
+    """Test error handling in get_run_logs function."""
+
+    @patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis.get_logs_client')
+    @patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis._get_logs_from_stream')
+    @pytest.mark.asyncio
+    async def test_get_run_logs_boto_error(
+        self,
+        mock_get_logs_from_stream,
+        mock_get_logs_client,
+        mock_context,
+    ):
+        """Test get_run_logs with BotoCoreError."""
+        # Arrange
+        mock_client = MagicMock()
+        mock_get_logs_client.return_value = mock_client
+        mock_get_logs_from_stream.side_effect = botocore.exceptions.BotoCoreError()
+
+        # Act & Assert
+        with pytest.raises(botocore.exceptions.BotoCoreError):
+            await get_run_logs(
+                ctx=mock_context,
+                run_id='run-12345',
+                start_time=None,
+                end_time=None,
+                limit=100,
+                next_token=None,
+                start_from_head=True,
+            )
+
+        # Verify error was reported to context
+        mock_context.error.assert_called_once()
+        error_call_args = mock_context.error.call_args[0][0]
+        assert 'AWS error retrieving run logs for run run-12345' in error_call_args
+
+    @patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis.get_logs_client')
+    @patch('awslabs.aws_healthomics_mcp_server.tools.workflow_analysis._get_logs_from_stream')
+    @pytest.mark.asyncio
+    async def test_get_run_logs_unexpected_error(
+        self,
+        mock_get_logs_from_stream,
+        mock_get_logs_client,
+        mock_context,
+    ):
+        """Test get_run_logs with unexpected error."""
+        # Arrange
+        mock_client = MagicMock()
+        mock_get_logs_client.return_value = mock_client
+        mock_get_logs_from_stream.side_effect = Exception('Unexpected error')
+
+        # Act & Assert
+        with pytest.raises(Exception, match='Unexpected error'):
+            await get_run_logs(
+                ctx=mock_context,
+                run_id='run-12345',
+                start_time=None,
+                end_time=None,
+                limit=100,
+                next_token=None,
+                start_from_head=True,
+            )
+
+        # Verify error was reported to context
+        mock_context.error.assert_called_once()
+        error_call_args = mock_context.error.call_args[0][0]
+        assert 'Unexpected error retrieving run logs for run run-12345' in error_call_args
