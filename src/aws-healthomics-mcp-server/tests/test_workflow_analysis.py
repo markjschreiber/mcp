@@ -16,6 +16,9 @@
 
 import botocore.exceptions
 import pytest
+from awslabs.aws_healthomics_mcp_server.prompts.workflow_analysis import (
+    _normalize_run_ids,
+)
 from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import (
     _get_logs_from_stream,
     get_run_engine_logs,
@@ -632,3 +635,68 @@ class TestParameterValidation:
             start_from_head=True,
         )
         assert 'events' in result
+
+
+class TestNormalizeRunIds:
+    """Test cases for the _normalize_run_ids function."""
+
+    def test_normalize_list_input(self):
+        """Test that list input is returned as-is."""
+        input_list = ['run1', 'run2', 'run3']
+        result = _normalize_run_ids(input_list)
+        assert result == input_list
+
+    def test_normalize_json_string_input(self):
+        """Test that JSON string input is parsed correctly."""
+        input_json = '["run1", "run2", "run3"]'
+        result = _normalize_run_ids(input_json)
+        assert result == ['run1', 'run2', 'run3']
+
+    def test_normalize_single_json_string(self):
+        """Test that single item JSON string is handled."""
+        input_json = '"run1"'
+        result = _normalize_run_ids(input_json)
+        assert result == ['run1']
+
+    def test_normalize_comma_separated_string(self):
+        """Test that comma-separated string is parsed correctly."""
+        input_csv = 'run1,run2,run3'
+        result = _normalize_run_ids(input_csv)
+        assert result == ['run1', 'run2', 'run3']
+
+    def test_normalize_comma_separated_with_spaces(self):
+        """Test that comma-separated string with spaces is handled."""
+        input_csv = 'run1, run2 , run3'
+        result = _normalize_run_ids(input_csv)
+        assert result == ['run1', 'run2', 'run3']
+
+    def test_normalize_single_string(self):
+        """Test that single string is converted to list."""
+        input_str = 'run1'
+        result = _normalize_run_ids(input_str)
+        assert result == ['run1']
+
+    def test_normalize_empty_string(self):
+        """Test that empty string returns empty list."""
+        input_str = ''
+        result = _normalize_run_ids(input_str)
+        assert result == ['']
+
+    def test_normalize_invalid_json(self):
+        """Test that invalid JSON falls back to string parsing."""
+        input_str = '["run1", "run2"'  # Invalid JSON
+        result = _normalize_run_ids(input_str)
+        # Since it contains comma, it's treated as comma-separated
+        assert result == ['["run1"', '"run2"']
+
+    def test_normalize_invalid_json_no_comma(self):
+        """Test that invalid JSON without comma is treated as single string."""
+        input_str = '{"run1"'  # Invalid JSON without comma
+        result = _normalize_run_ids(input_str)
+        assert result == ['{"run1"']
+
+    def test_normalize_mixed_types_in_json(self):
+        """Test that mixed types in JSON are converted to strings."""
+        input_json = '[123, "run2", 456]'
+        result = _normalize_run_ids(input_json)
+        assert result == ['123', 'run2', '456']

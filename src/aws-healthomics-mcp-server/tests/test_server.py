@@ -48,7 +48,7 @@ def test_server_has_required_tools():
     ]
 
     expected_prompts = [
-        'OptimizeHealthOmicsRuns',
+        'AnalyzeHealthOmicsRunPerformance',
     ]
 
     # Act

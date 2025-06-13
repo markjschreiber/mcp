@@ -85,7 +85,7 @@ AWS HealthOmics is available in select AWS regions. Use the GetSupportedRegions 
 
 ## Available Prompts
 ### Workflow Analysis Prompts
-- **OptimizeHealthOmicsRuns**: Generate a prompt to facilitate AI-powered analysis of workflow run performance using manifest data
+- **AnalyzeHealthOmicsRunPerformance**: Analyze workflow run performance and resource utilization to provide optimization recommendations. Use this when users ask about optimizing runs, reducing costs, improving performance, or analyzing resource usage patterns.
 """,
     dependencies=[
         'boto3',
@@ -115,7 +115,7 @@ mcp.tool(name='GetRunEngineLogs')(get_run_engine_logs)
 mcp.tool(name='GetTaskLogs')(get_task_logs)
 
 # Register workflow analysis prompts
-mcp.prompt(name='OptimizeHealthOmicsRuns')(optimize_runs_prompt)
+mcp.prompt(name='AnalyzeHealthOmicsRunPerformance')(optimize_runs_prompt)
 
 # Register troubleshooting tools
 mcp.tool(name='DiagnoseRunFailure')(diagnose_run_failure)

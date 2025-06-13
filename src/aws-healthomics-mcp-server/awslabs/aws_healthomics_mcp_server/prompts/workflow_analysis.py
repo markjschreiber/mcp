@@ -24,38 +24,80 @@ from awslabs.aws_healthomics_mcp_server.utils.aws_utils import get_aws_session
 from datetime import datetime, timezone
 from loguru import logger
 from pydantic import Field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
+
+
+def _normalize_run_ids(run_ids: Union[List[str], str]) -> List[str]:
+    """Normalize run_ids parameter to a list of strings.
+
+    Handles various input formats:
+    - List of strings: ["run1", "run2"]
+    - JSON string: '["run1", "run2"]'
+    - Comma-separated string: "run1,run2"
+    - Single string: "run1"
+    """
+    if isinstance(run_ids, list):
+        return run_ids
+
+    if isinstance(run_ids, str):
+        # Try to parse as JSON first
+        try:
+            parsed = json.loads(run_ids)
+            if isinstance(parsed, list):
+                return [str(item) for item in parsed]
+            else:
+                # Single item in JSON
+                return [str(parsed)]
+        except json.JSONDecodeError:
+            # Not JSON, try comma-separated
+            if ',' in run_ids:
+                return [item.strip() for item in run_ids.split(',') if item.strip()]
+            else:
+                # Single run ID
+                return [run_ids.strip()]
+
+    # Fallback
+    return [str(run_ids)]
 
 
 async def optimize_runs_prompt(
-    run_ids: List[str] = Field(
+    run_ids: Union[List[str], str] = Field(
         ...,
-        description='List of run IDs to analyze for resource optimization',
+        description='List of run IDs to analyze for resource optimization. Can be provided as a JSON array string like ["run1", "run2"] or as a comma-separated string like "run1,run2"',
     ),
 ) -> str:
-    """The user wants to optimize resources used in a run or list of runs.
+    """Analyze AWS HealthOmics workflow run performance and provide optimization recommendations.
 
-    This prompt retrieves run manifest logs containing detailed task metrics
-    and returns structured data with analysis instructions for AI-powered insights.
-
-    The manifest logs contain comprehensive information about:
-    - Task resource allocation vs actual usage
-    - CPU and memory utilization patterns
-    - Runtime performance metrics
+    This prompt is designed to help users optimize their HealthOmics workflow runs by analyzing:
+    - Resource utilization patterns (CPU, memory)
     - Cost optimization opportunities
+    - Performance bottlenecks
+    - Resource allocation efficiency
+    - Runtime optimization suggestions
+
+    Use this prompt when users ask about:
+    - "How can I optimize my HealthOmics runs?"
+    - "Why is my workflow using too many resources?"
+    - "How can I reduce costs for my genomic workflows?"
+    - "What resources are being wasted in my runs?"
+    - "How can I improve workflow performance?"
+
+    The prompt retrieves detailed manifest logs containing task-level metrics
+    and provides structured data with analysis instructions for AI-powered insights.
 
     Args:
-        ctx: MCP context for error reporting
-        run_ids: List of run IDs to analyze
+        run_ids: List of run IDs to analyze for optimization
 
     Returns:
         Formatted prompt string with structured manifest data and analysis instructions
     """
     try:
-        logger.info(f'Generating analysis prompt for runs {run_ids}')
+        # Normalize run_ids to handle various input formats
+        normalized_run_ids = _normalize_run_ids(run_ids)
+        logger.info(f'Generating analysis prompt for runs {normalized_run_ids}')
 
         # Get the structured analysis data
-        analysis_data = await _get_run_analysis_data(run_ids)
+        analysis_data = await _get_run_analysis_data(normalized_run_ids)
 
         if not analysis_data or not analysis_data.get('runs'):
             return f"""
