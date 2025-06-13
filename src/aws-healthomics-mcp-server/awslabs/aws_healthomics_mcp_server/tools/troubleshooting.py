@@ -24,10 +24,64 @@ from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import (
     get_task_logs_internal,
 )
 from awslabs.aws_healthomics_mcp_server.utils.aws_utils import get_aws_session
+from datetime import datetime, timedelta
 from loguru import logger
 from mcp.server.fastmcp import Context
 from pydantic import Field
 from typing import Any, Dict
+
+
+def safe_datetime_to_iso(dt_obj):
+    """Safely convert datetime object to ISO format string."""
+    if dt_obj is None:
+        return None
+    if hasattr(dt_obj, 'isoformat'):
+        return dt_obj.isoformat()
+    # If it's already a string, return as-is
+    if isinstance(dt_obj, str):
+        return dt_obj
+    # For any other type, convert to string
+    return str(dt_obj)
+
+
+def calculate_log_time_window(start_time, end_time, buffer_minutes=5):
+    """Calculate time window for log retrieval with buffer around start and end times.
+
+    Args:
+        start_time: Start datetime (can be datetime object or string)
+        end_time: End datetime (can be datetime object or string)
+        buffer_minutes: Minutes to add before start and after end (default: 5)
+
+    Returns:
+        Tuple of (start_time_iso, end_time_iso) strings or (None, None) if inputs invalid
+    """
+    try:
+        # Convert to datetime objects if they're strings
+        if isinstance(start_time, str):
+            start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+        elif hasattr(start_time, 'replace'):  # datetime object
+            start_dt = start_time
+        else:
+            return None, None
+
+        if isinstance(end_time, str):
+            end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+        elif hasattr(end_time, 'replace'):  # datetime object
+            end_dt = end_time
+        else:
+            return None, None
+
+        # Add buffer time
+        buffer_delta = timedelta(minutes=buffer_minutes)
+        log_start = start_dt - buffer_delta
+        log_end = end_dt + buffer_delta
+
+        # Convert back to ISO format strings
+        return log_start.isoformat(), log_end.isoformat()
+
+    except Exception as e:
+        logger.warning(f'Failed to calculate log time window: {str(e)}')
+        return None, None
 
 
 def get_omics_client():
@@ -95,11 +149,25 @@ async def diagnose_run_failure(
 
         logger.info(f'Diagnosing failed run {run_id} with UUID {run_uuid}')
 
+        # Calculate time window for log retrieval (5 minutes before creation to 5 minutes after stop)
+        creation_time = run_response.get('creationTime')
+        stop_time = run_response.get('stopTime')
+        log_start_time, log_end_time = calculate_log_time_window(creation_time, stop_time)
+
+        if log_start_time and log_end_time:
+            logger.info(f'Using log time window: {log_start_time} to {log_end_time}')
+        else:
+            logger.warning(
+                'Could not calculate log time window, retrieving logs without time filter'
+            )
+
         # Get engine logs using the workflow_analysis function
         engine_logs = []
         try:
             engine_logs_response = await get_run_engine_logs_internal(
                 run_id=run_id,
+                start_time=log_start_time,
+                end_time=log_end_time,
                 limit=100,
                 start_from_head=False,  # Get the most recent logs
             )
@@ -121,6 +189,8 @@ async def diagnose_run_failure(
                 manifest_logs_response = await get_run_manifest_logs_internal(
                     run_id=run_id,
                     run_uuid=run_uuid,
+                    start_time=log_start_time,
+                    end_time=log_end_time,
                     limit=100,
                     start_from_head=False,  # Get the most recent logs
                 )
@@ -160,12 +230,36 @@ async def diagnose_run_failure(
 
                 logger.info(f'Processing failed task {task_id} ({task_name})')
 
+                # Calculate task-specific time window if possible, otherwise use run time window
+                task_start_time = log_start_time
+                task_end_time = log_end_time
+
+                # Try to get more detailed task information for better time scoping
+                try:
+                    task_details = omics_client.get_run_task(id=run_id, taskId=task_id)
+                    task_creation_time = task_details.get('creationTime')
+                    task_stop_time = task_details.get('stopTime')
+
+                    if task_creation_time and task_stop_time:
+                        task_start_time, task_end_time = calculate_log_time_window(
+                            task_creation_time, task_stop_time
+                        )
+                        logger.info(
+                            f'Using task-specific time window for {task_id}: {task_start_time} to {task_end_time}'
+                        )
+                except Exception as e:
+                    logger.debug(
+                        f'Could not get detailed task timing for {task_id}, using run time window: {str(e)}'
+                    )
+
                 # Get task logs using the workflow_analysis function
                 task_logs = []
                 try:
                     task_logs_response = await get_task_logs_internal(
                         run_id=run_id,
                         task_id=task_id,
+                        start_time=task_start_time,
+                        end_time=task_end_time,
                         limit=100,  # Get more logs per task
                         start_from_head=False,  # Get the most recent logs
                     )

@@ -20,6 +20,7 @@ from awslabs.aws_healthomics_mcp_server.tools.troubleshooting import (
     diagnose_run_failure,
     get_omics_client,
 )
+from datetime import datetime, timezone
 from mcp.server.fastmcp import Context
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -158,6 +159,12 @@ class TestDiagnoseRunFailure:
         mock_client.get_run.return_value = sample_failed_run_response
         mock_client.list_run_tasks.return_value = sample_failed_tasks
 
+        # Mock get_run_task calls for task-specific timing
+        mock_client.get_run_task.return_value = {
+            'creationTime': datetime(2024, 1, 1, 10, 5, 0, tzinfo=timezone.utc),
+            'stopTime': datetime(2024, 1, 1, 10, 25, 0, tzinfo=timezone.utc),
+        }
+
         # Mock log responses
         mock_get_run_engine_logs_internal.return_value = sample_log_events
         mock_get_run_manifest_logs_internal.return_value = sample_log_events
@@ -206,9 +213,11 @@ class TestDiagnoseRunFailure:
             maxResults=100,  # Updated to 100
         )
 
-        # Verify log function calls with correct parameters
+        # Verify log function calls with correct parameters (now include time windows)
         mock_get_run_engine_logs_internal.assert_called_once_with(
             run_id='run-12345',
+            start_time='2024-01-01T09:55:00+00:00',  # 5 minutes before creation time
+            end_time='2024-01-01T10:35:00+00:00',  # 5 minutes after stop time
             limit=100,
             start_from_head=False,
         )
@@ -217,21 +226,27 @@ class TestDiagnoseRunFailure:
         mock_get_run_manifest_logs_internal.assert_called_once_with(
             run_id='run-12345',
             run_uuid='uuid-abcd-1234',
+            start_time='2024-01-01T09:55:00+00:00',  # 5 minutes before creation time
+            end_time='2024-01-01T10:35:00+00:00',  # 5 minutes after stop time
             limit=100,
             start_from_head=False,
         )
 
-        # Verify task log calls
+        # Verify task log calls (should use task-specific timing)
         assert mock_get_task_logs_internal.call_count == 2
         mock_get_task_logs_internal.assert_any_call(
             run_id='run-12345',
             task_id='task-111',
+            start_time='2024-01-01T10:00:00+00:00',  # 5 minutes before task creation
+            end_time='2024-01-01T10:30:00+00:00',  # 5 minutes after task stop
             limit=100,  # Updated to 100
             start_from_head=False,
         )
         mock_get_task_logs_internal.assert_any_call(
             run_id='run-12345',
             task_id='task-222',
+            start_time='2024-01-01T10:00:00+00:00',  # 5 minutes before task creation
+            end_time='2024-01-01T10:30:00+00:00',  # 5 minutes after task stop
             limit=100,  # Updated to 100
             start_from_head=False,
         )
@@ -635,3 +650,53 @@ class TestDiagnoseRunFailure:
             maxResults=100,
             startingToken='token123',
         )
+
+
+class TestTimeWindowCalculation:
+    """Test time window calculation functionality."""
+
+    def test_calculate_log_time_window_with_datetime_objects(self):
+        """Test calculate_log_time_window with datetime objects."""
+        from awslabs.aws_healthomics_mcp_server.tools.troubleshooting import (
+            calculate_log_time_window,
+        )
+
+        # Test with datetime objects
+        start_time = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        end_time = datetime(2024, 1, 1, 10, 30, 0, tzinfo=timezone.utc)
+
+        log_start, log_end = calculate_log_time_window(start_time, end_time, buffer_minutes=5)
+
+        assert log_start == '2024-01-01T09:55:00+00:00'
+        assert log_end == '2024-01-01T10:35:00+00:00'
+
+    def test_calculate_log_time_window_with_strings(self):
+        """Test calculate_log_time_window with string inputs."""
+        from awslabs.aws_healthomics_mcp_server.tools.troubleshooting import (
+            calculate_log_time_window,
+        )
+
+        # Test with string inputs
+        start_str = '2024-01-01T10:00:00Z'
+        end_str = '2024-01-01T10:30:00Z'
+
+        log_start, log_end = calculate_log_time_window(start_str, end_str, buffer_minutes=10)
+
+        assert log_start == '2024-01-01T09:50:00+00:00'
+        assert log_end == '2024-01-01T10:40:00+00:00'
+
+    def test_calculate_log_time_window_with_invalid_inputs(self):
+        """Test calculate_log_time_window with invalid inputs."""
+        from awslabs.aws_healthomics_mcp_server.tools.troubleshooting import (
+            calculate_log_time_window,
+        )
+
+        # Test with invalid inputs
+        log_start, log_end = calculate_log_time_window(None, None)
+        assert log_start is None
+        assert log_end is None
+
+        # Test with mixed invalid inputs
+        log_start, log_end = calculate_log_time_window('invalid', None)
+        assert log_start is None
+        assert log_end is None
