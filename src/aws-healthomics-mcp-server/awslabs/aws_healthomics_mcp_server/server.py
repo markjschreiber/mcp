@@ -14,11 +14,11 @@
 
 """awslabs aws-healthomics MCP Server implementation."""
 
-from awslabs.aws_healthomics_mcp_server.prompts.workflow_analysis import optimize_runs_prompt
 from awslabs.aws_healthomics_mcp_server.tools.helper_tools import (
     get_supported_regions,
     package_workflow,
 )
+from awslabs.aws_healthomics_mcp_server.tools.run_analysis import analyze_run_performance
 from awslabs.aws_healthomics_mcp_server.tools.troubleshooting import diagnose_run_failure
 from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import (
     get_run_engine_logs,
@@ -72,6 +72,7 @@ This MCP server provides tools for creating, managing, and analyzing genomic wor
 - **GetRunManifestLogs**: Retrieve run manifest logs with workflow summary
 - **GetRunEngineLogs**: Retrieve engine logs containing STDOUT and STDERR
 - **GetTaskLogs**: Retrieve logs for specific workflow tasks
+- **AnalyzeRunPerformance**: Analyze workflow run performance and resource utilization to provide optimization recommendations
 
 ### Troubleshooting
 - **DiagnoseRunFailure**: Diagnose a failed workflow run
@@ -82,10 +83,6 @@ This MCP server provides tools for creating, managing, and analyzing genomic wor
 
 ## Service Availability
 AWS HealthOmics is available in select AWS regions. Use the GetSupportedRegions tool to get the current list of supported regions.
-
-## Available Prompts
-### Workflow Analysis Prompts
-- **AnalyzeHealthOmicsRunPerformance**: Analyze workflow run performance and resource utilization to provide optimization recommendations. Use this when users ask about optimizing runs, reducing costs, improving performance, or analyzing resource usage patterns.
 """,
     dependencies=[
         'boto3',
@@ -113,9 +110,7 @@ mcp.tool(name='GetRunLogs')(get_run_logs)
 mcp.tool(name='GetRunManifestLogs')(get_run_manifest_logs)
 mcp.tool(name='GetRunEngineLogs')(get_run_engine_logs)
 mcp.tool(name='GetTaskLogs')(get_task_logs)
-
-# Register workflow analysis prompts
-mcp.prompt(name='AnalyzeHealthOmicsRunPerformance')(optimize_runs_prompt)
+mcp.tool(name='AnalyzeRunPerformance')(analyze_run_performance)
 
 # Register troubleshooting tools
 mcp.tool(name='DiagnoseRunFailure')(diagnose_run_failure)

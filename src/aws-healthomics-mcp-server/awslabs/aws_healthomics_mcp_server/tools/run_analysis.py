@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Workflow analysis prompts for the AWS HealthOmics MCP server."""
+"""Run analysis tools for the AWS HealthOmics MCP server."""
 
 import json
 import os
@@ -23,6 +23,7 @@ from awslabs.aws_healthomics_mcp_server.tools.workflow_analysis import (
 from awslabs.aws_healthomics_mcp_server.utils.aws_utils import get_aws_session
 from datetime import datetime, timezone
 from loguru import logger
+from mcp.server.fastmcp import Context
 from pydantic import Field
 from typing import Any, Dict, List, Optional, Union
 
@@ -84,7 +85,8 @@ def _normalize_run_ids(run_ids: Union[List[str], str]) -> List[str]:
     return [str(run_ids)]
 
 
-async def optimize_runs_prompt(
+async def analyze_run_performance(
+    ctx: Context,
     run_ids: Union[List[str], str] = Field(
         ...,
         description='List of run IDs to analyze for resource optimization. Can be provided as a JSON array string like ["run1", "run2"] or as a comma-separated string like "run1,run2"',
@@ -92,40 +94,41 @@ async def optimize_runs_prompt(
 ) -> str:
     """Analyze AWS HealthOmics workflow run performance and provide optimization recommendations.
 
-    This prompt is designed to help users optimize their HealthOmics workflow runs by analyzing:
+    This tool analyzes HealthOmics workflow runs to help users optimize:
     - Resource utilization patterns (CPU, memory)
     - Cost optimization opportunities
     - Performance bottlenecks
     - Resource allocation efficiency
     - Runtime optimization suggestions
 
-    Use this prompt when users ask about:
+    Use this tool when users ask about:
     - "How can I optimize my HealthOmics runs?"
     - "Why is my workflow using too many resources?"
     - "How can I reduce costs for my genomic workflows?"
     - "What resources are being wasted in my runs?"
     - "How can I improve workflow performance?"
 
-    The prompt retrieves detailed manifest logs containing task-level metrics
+    The tool retrieves detailed manifest logs containing task-level metrics
     and provides structured data with analysis instructions for AI-powered insights.
 
     Args:
+        ctx: MCP request context for error reporting
         run_ids: List of run IDs to analyze for optimization
 
     Returns:
-        Formatted prompt string with structured manifest data and analysis instructions
+        Formatted analysis string with structured manifest data and optimization recommendations
     """
     try:
         # Normalize run_ids to handle various input formats
         normalized_run_ids = _normalize_run_ids(run_ids)
-        logger.info(f'Generating analysis prompt for runs {normalized_run_ids}')
+        logger.info(f'Analyzing performance for runs {normalized_run_ids}')
 
         # Get the structured analysis data
         analysis_data = await _get_run_analysis_data(normalized_run_ids)
 
         if not analysis_data or not analysis_data.get('runs'):
-            return f"""
-I was unable to retrieve manifest data for the specified run IDs: {run_ids}
+            error_msg = f"""
+Unable to retrieve manifest data for the specified run IDs: {run_ids}
 
 This could be because:
 - The runs are still in progress (manifest logs are only available after completion)
@@ -134,93 +137,216 @@ This could be because:
 
 Please verify the run IDs and ensure the runs have completed successfully.
 """
+            await ctx.error(error_msg)
+            return error_msg
 
-        # Generate the comprehensive analysis prompt
-        prompt = f"""
-# AWS HealthOmics Workflow Performance Analysis
+        # Generate the comprehensive analysis report
+        report = await _generate_analysis_report(analysis_data)
 
-Please analyze the following AWS HealthOmics workflow run data and provide comprehensive performance optimization recommendations.
-
-## Run Data Summary
-- **Total Runs Analyzed**: {analysis_data['summary']['totalRuns']}
-- **Analysis Timestamp**: {analysis_data['summary']['analysisTimestamp']}
-- **Analysis Type**: {analysis_data['summary']['analysisType']}
-
-## Detailed Run and Task Metrics
-
-```json
-{_safe_json_dumps(analysis_data, indent=2)}
-```
-
-## Analysis Instructions
-
-Please provide a comprehensive performance analysis report focusing on these key areas:
-
-### 1. Resource Utilization Efficiency
-- **CPU Efficiency**: Compare `avgCpuUtilization` vs `reservedCpus` for each task
-- **Memory Efficiency**: Compare `avgMemoryUtilizationGiB` vs `reservedMemoryGiB` for each task
-- **Identify Over-Provisioned Tasks**: Tasks with efficiency ratios < 50% (wasting resources)
-- **Identify Under-Provisioned Tasks**: Tasks with max utilization > 90% (may need more resources)
-
-### 2. Cost Optimization Opportunities
-- Calculate potential savings from right-sizing over-provisioned tasks
-- Estimate cost of wasted CPU and memory resources (`wastedCpus`, `wastedMemoryGiB`)
-- Recommend optimal instance types based on actual usage patterns
-- Prioritize optimization efforts by potential impact
-
-### 3. Performance Analysis
-- Analyze `runningSeconds` for each task to identify bottlenecks
-- Compare similar tasks (same `taskName` pattern) for consistency
-- Look for tasks that could benefit from different resource configurations
-- Identify workflow parallelization opportunities
-
-### 4. Instance Type Optimization
-- Review `instanceType` assignments vs actual resource usage
-- Recommend more cost-effective instance types where appropriate
-- Consider memory-optimized vs compute-optimized instances based on usage patterns
-
-### 5. HealthOmics Considerations
-- The minimum recommended CPU allocation for a task is 1 CPU
-- The minimum recommended Memory allocation for a task is 1 GB
-- Task containers must contain the BASH shell and not rely on any ENTRYPOINT
-- Omics instance types have the following CPU to Memory ratios and recommended CPU and Memory reservations for tasks should observe these
-    - omics.c family has 2 GiB of memory per CPU
-    - omics.m family has 4 GiB of memory per CPU
-    - omics.r family has 8 GiB of memory per CPU
-
-### 6. Specific Recommendations
-For each task, provide:
-- Current resource allocation vs actual usage
-- Recommended resource allocation
-- Estimated cost savings
-- Priority level (high/medium/low impact)
-
-## Key Metrics Reference
-- `cpuEfficiencyRatio`: Actual CPU usage / Reserved CPUs
-- `memoryEfficiencyRatio`: Actual memory usage / Reserved memory
-- `isOverProvisioned`: Boolean flag for tasks wasting >50% of resources
-- `isUnderProvisioned`: Boolean flag for tasks using >90% of max resources
-- `wastedCpus/wastedMemoryGiB`: Unused reserved resources
-
-## Optimization Thresholds
-- **Over-provisioned threshold**: < 50% efficiency
-- **Under-provisioned threshold**: > 90% max utilization
-- **Target efficiency**: ~80% for optimal cost/performance balance
-
-Please provide specific, actionable recommendations with quantified benefits and clear prioritization.
-"""
-
-        logger.info(f'Generated analysis prompt for {len(analysis_data["runs"])} runs')
-        return prompt
+        logger.info(f'Generated analysis report for {len(analysis_data["runs"])} runs')
+        return report
 
     except Exception as e:
-        error_message = f'Error generating analysis prompt: {str(e)}'
+        error_message = f'Error analyzing run performance for runs {run_ids}: {str(e)}'
         logger.error(error_message)
-        return f"""
-Error generating analysis prompt for runs {run_ids}: {str(e)}
+        await ctx.error(error_message)
+        return error_message
 
-Please check the run IDs and try again. If the issue persists, the runs may still be in progress or there may be an issue accessing the manifest logs.
-"""
+
+async def _generate_analysis_report(analysis_data: Dict[str, Any]) -> str:
+    """Generate a comprehensive analysis report from the structured data."""
+    try:
+        report_sections = []
+
+        # Header
+        report_sections.append('# AWS HealthOmics Workflow Performance Analysis Report')
+        report_sections.append('')
+
+        # Summary
+        summary = analysis_data['summary']
+        report_sections.append('## Analysis Summary')
+        report_sections.append(f'- **Total Runs Analyzed**: {summary["totalRuns"]}')
+        report_sections.append(f'- **Analysis Timestamp**: {summary["analysisTimestamp"]}')
+        report_sections.append(f'- **Analysis Type**: {summary["analysisType"]}')
+        report_sections.append('')
+
+        # Process each run
+        for i, run_data in enumerate(analysis_data['runs'], 1):
+            run_info = run_data['runInfo']
+            run_summary = run_data['summary']
+            task_metrics = run_data['taskMetrics']
+
+            report_sections.append(f'## Run {i}: {run_info["runName"]} ({run_info["runId"]})')
+            report_sections.append('')
+
+            # Run overview
+            report_sections.append('### Run Overview')
+            report_sections.append(f'- **Status**: {run_info["status"]}')
+            report_sections.append(f'- **Workflow ID**: {run_info["workflowId"]}')
+            report_sections.append(f'- **Creation Time**: {run_info["creationTime"]}')
+            report_sections.append(f'- **Start Time**: {run_info["startTime"]}')
+            report_sections.append(f'- **Stop Time**: {run_info["stopTime"]}')
+            report_sections.append('')
+
+            # Resource summary
+            report_sections.append('### Resource Utilization Summary')
+            report_sections.append(f'- **Total Tasks**: {run_summary["totalTasks"]}')
+            report_sections.append(
+                f'- **Total Allocated CPUs**: {run_summary["totalAllocatedCpus"]:.2f}'
+            )
+            report_sections.append(
+                f'- **Total Allocated Memory**: {run_summary["totalAllocatedMemoryGiB"]:.2f} GiB'
+            )
+            report_sections.append(
+                f'- **Actual CPU Usage**: {run_summary["totalActualCpuUsage"]:.2f}'
+            )
+            report_sections.append(
+                f'- **Actual Memory Usage**: {run_summary["totalActualMemoryUsageGiB"]:.2f} GiB'
+            )
+            report_sections.append(
+                f'- **Overall CPU Efficiency**: {run_summary["overallCpuEfficiency"]:.1%}'
+            )
+            report_sections.append(
+                f'- **Overall Memory Efficiency**: {run_summary["overallMemoryEfficiency"]:.1%}'
+            )
+            report_sections.append('')
+
+            # Task analysis
+            if task_metrics:
+                report_sections.append('### Task Performance Analysis')
+
+                # Identify optimization opportunities
+                over_provisioned_tasks = [
+                    t for t in task_metrics if t.get('isOverProvisioned', False)
+                ]
+                under_provisioned_tasks = [
+                    t for t in task_metrics if t.get('isUnderProvisioned', False)
+                ]
+
+                if over_provisioned_tasks:
+                    report_sections.append('#### Over-Provisioned Tasks (Wasting Resources)')
+                    for task in over_provisioned_tasks:
+                        cpu_waste = task.get('wastedCpus', 0)
+                        memory_waste = task.get('wastedMemoryGiB', 0)
+                        cpu_eff = task.get('cpuEfficiencyRatio', 0)
+                        mem_eff = task.get('memoryEfficiencyRatio', 0)
+
+                        report_sections.append(f'- **{task["taskName"]}**:')
+                        report_sections.append(
+                            f'  - CPU Efficiency: {cpu_eff:.1%} (Wasted: {cpu_waste:.2f} CPUs)'
+                        )
+                        report_sections.append(
+                            f'  - Memory Efficiency: {mem_eff:.1%} (Wasted: {memory_waste:.2f} GiB)'
+                        )
+                        report_sections.append(
+                            f'  - Instance Type: {task.get("instanceType", "N/A")}'
+                        )
+                        report_sections.append(
+                            f'  - Runtime: {task.get("runningSeconds", 0)} seconds'
+                        )
+                    report_sections.append('')
+
+                if under_provisioned_tasks:
+                    report_sections.append(
+                        '#### Under-Provisioned Tasks (May Need More Resources)'
+                    )
+                    for task in under_provisioned_tasks:
+                        max_cpu_eff = task.get('maxCpuEfficiencyRatio', 0)
+                        max_mem_eff = task.get('maxMemoryEfficiencyRatio', 0)
+
+                        report_sections.append(f'- **{task["taskName"]}**:')
+                        report_sections.append(f'  - Max CPU Utilization: {max_cpu_eff:.1%}')
+                        report_sections.append(f'  - Max Memory Utilization: {max_mem_eff:.1%}')
+                        report_sections.append(
+                            f'  - Instance Type: {task.get("instanceType", "N/A")}'
+                        )
+                        report_sections.append(
+                            f'  - Runtime: {task.get("runningSeconds", 0)} seconds'
+                        )
+                    report_sections.append('')
+
+                # Optimization recommendations
+                report_sections.append('#### Optimization Recommendations')
+
+                total_wasted_cpus = sum(t.get('wastedCpus', 0) for t in task_metrics)
+                total_wasted_memory = sum(t.get('wastedMemoryGiB', 0) for t in task_metrics)
+
+                if total_wasted_cpus > 0 or total_wasted_memory > 0:
+                    report_sections.append('**Resource Right-Sizing Opportunities:**')
+                    report_sections.append(
+                        f'- Total wasted CPUs across all tasks: {total_wasted_cpus:.2f}'
+                    )
+                    report_sections.append(
+                        f'- Total wasted memory across all tasks: {total_wasted_memory:.2f} GiB'
+                    )
+                    report_sections.append('')
+
+                # Instance type recommendations
+                instance_types = {}
+                for task in task_metrics:
+                    inst_type = task.get('instanceType', 'unknown')
+                    if inst_type not in instance_types:
+                        instance_types[inst_type] = []
+                    instance_types[inst_type].append(task)
+
+                if len(instance_types) > 1:
+                    report_sections.append('**Instance Type Analysis:**')
+                    for inst_type, tasks in instance_types.items():
+                        avg_cpu_eff = sum(t.get('cpuEfficiencyRatio', 0) for t in tasks) / len(
+                            tasks
+                        )
+                        avg_mem_eff = sum(t.get('memoryEfficiencyRatio', 0) for t in tasks) / len(
+                            tasks
+                        )
+                        report_sections.append(f'- **{inst_type}** ({len(tasks)} tasks):')
+                        report_sections.append(f'  - Average CPU Efficiency: {avg_cpu_eff:.1%}')
+                        report_sections.append(f'  - Average Memory Efficiency: {avg_mem_eff:.1%}')
+                    report_sections.append('')
+
+            # Detailed task data (JSON format for further analysis)
+            report_sections.append('### Detailed Task Metrics (JSON)')
+            report_sections.append('```json')
+            report_sections.append(_safe_json_dumps(task_metrics, indent=2))
+            report_sections.append('```')
+            report_sections.append('')
+
+        # General recommendations
+        report_sections.append('## General Optimization Guidelines')
+        report_sections.append('')
+        report_sections.append('### HealthOmics Resource Recommendations')
+        report_sections.append('- **Minimum CPU allocation**: 1 CPU per task')
+        report_sections.append('- **Minimum Memory allocation**: 1 GB per task')
+        report_sections.append('- **Instance family CPU:Memory ratios**:')
+        report_sections.append('  - omics.c family: 2 GiB memory per CPU')
+        report_sections.append('  - omics.m family: 4 GiB memory per CPU')
+        report_sections.append('  - omics.r family: 8 GiB memory per CPU')
+        report_sections.append('')
+        report_sections.append('### Optimization Thresholds')
+        report_sections.append('- **Over-provisioned threshold**: < 50% efficiency')
+        report_sections.append('- **Under-provisioned threshold**: > 90% max utilization')
+        report_sections.append(
+            '- **Target efficiency**: ~80% for optimal cost/performance balance'
+        )
+        report_sections.append('')
+        report_sections.append('### Next Steps')
+        report_sections.append(
+            '1. **Prioritize high-impact optimizations**: Focus on tasks with the most wasted resources'
+        )
+        report_sections.append(
+            '2. **Test resource adjustments**: Gradually reduce resources for over-provisioned tasks'
+        )
+        report_sections.append(
+            "3. **Monitor performance**: Ensure optimizations don't negatively impact runtime"
+        )
+        report_sections.append(
+            '4. **Consider workflow parallelization**: Look for opportunities to run tasks concurrently'
+        )
+
+        return '\n'.join(report_sections)
+
+    except Exception as e:
+        logger.error(f'Error generating analysis report: {str(e)}')
+        return f'Error generating analysis report: {str(e)}'
 
 
 async def _get_run_analysis_data(run_ids: List[str]) -> Dict[str, Any]:

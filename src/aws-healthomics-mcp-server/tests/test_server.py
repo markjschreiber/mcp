@@ -42,13 +42,10 @@ def test_server_has_required_tools():
         'GetRunManifestLogs',
         'GetRunEngineLogs',
         'GetTaskLogs',
+        'AnalyzeRunPerformance',
         'DiagnoseRunFailure',
         'PackageWorkflow',
         'GetSupportedRegions',
-    ]
-
-    expected_prompts = [
-        'AnalyzeHealthOmicsRunPerformance',
     ]
 
     # Act
@@ -62,12 +59,6 @@ def test_server_has_required_tools():
     for tool_name in expected_tools:
         assert f'**{tool_name}**' in instructions, (
             f'Tool {tool_name} not found in server instructions'
-        )
-
-    # Verify all expected prompts are mentioned in the server instructions
-    for prompt_name in expected_prompts:
-        assert f'**{prompt_name}**' in instructions, (
-            f'Prompt {prompt_name} not found in server instructions'
         )
 
     # Verify server has the expected dependencies

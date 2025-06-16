@@ -16,7 +16,7 @@
 
 import botocore.exceptions
 import pytest
-from awslabs.aws_healthomics_mcp_server.prompts.workflow_analysis import (
+from awslabs.aws_healthomics_mcp_server.tools.run_analysis import (
     _convert_datetime_to_string,
     _normalize_run_ids,
     _safe_json_dumps,
