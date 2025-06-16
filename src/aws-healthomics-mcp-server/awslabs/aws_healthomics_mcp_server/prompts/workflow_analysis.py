@@ -257,7 +257,7 @@ async def _get_run_analysis_data(run_ids: List[str]) -> Dict[str, Any]:
                 manifest_logs = await get_run_manifest_logs_internal(
                     run_id=run_id,
                     run_uuid=run_uuid,
-                    limit=1000,  # Get comprehensive manifest data
+                    limit=2999,  # Get comprehensive manifest data
                 )
 
                 # Parse and structure the manifest data
