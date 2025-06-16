@@ -81,6 +81,7 @@ async def list_workflows(
         # Transform the response to a more user-friendly format
         workflows = []
         for workflow in response.get('items', []):
+            creation_time = workflow.get('creationTime')
             workflows.append(
                 {
                     'id': workflow.get('id'),
@@ -92,13 +93,13 @@ async def list_workflows(
                     'storageType': workflow.get('storageType'),
                     'storageCapacity': workflow.get('storageCapacity'),
                     'type': workflow.get('type'),
-                    'creationTime': workflow.get('creationTime').isoformat()
-                    if workflow.get('creationTime')
+                    'creationTime': creation_time.isoformat()
+                    if creation_time is not None
                     else None,
                 }
             )
 
-        result = {'workflows': workflows}
+        result: Dict[str, Any] = {'workflows': workflows}
         if 'nextToken' in response:
             result['nextToken'] = response['nextToken']
 
@@ -402,6 +403,7 @@ async def list_workflow_versions(
         # Transform the response to a more user-friendly format
         versions = []
         for version in response.get('items', []):
+            creation_time = version.get('creationTime')
             versions.append(
                 {
                     'id': version.get('id'),
@@ -410,15 +412,17 @@ async def list_workflow_versions(
                     'versionName': version.get('versionName'),
                     'status': version.get('status'),
                     'type': version.get('type'),
-                    'creationTime': version.get('creationTime')
-                    if isinstance(version.get('creationTime'), str)
-                    else version.get('creationTime').isoformat()
-                    if version.get('creationTime')
-                    else None,
+                    'creationTime': (
+                        creation_time
+                        if isinstance(creation_time, str)
+                        else creation_time.isoformat()
+                        if creation_time is not None
+                        else None
+                    ),
                 }
             )
 
-        result = {'versions': versions}
+        result: Dict[str, Any] = {'versions': versions}
         if 'nextToken' in response:
             result['nextToken'] = response['nextToken']
 

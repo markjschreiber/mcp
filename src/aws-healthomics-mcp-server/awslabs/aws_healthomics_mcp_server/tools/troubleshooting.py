@@ -228,6 +228,10 @@ async def diagnose_run_failure(
                 task_name = task.get('name')
                 task_status_message = task.get('statusMessage', 'No status message')
 
+                if not task_id:
+                    logger.warning(f'Skipping task with missing taskId: {task_name}')
+                    continue
+
                 logger.info(f'Processing failed task {task_id} ({task_name})')
 
                 # Calculate task-specific time window if possible, otherwise use run time window

@@ -351,7 +351,7 @@ class TestExtractTaskMetricsFromManifest:
         task_data = None  # This will cause an exception
 
         # Act
-        result = _extract_task_metrics_from_manifest(task_data)
+        result = _extract_task_metrics_from_manifest(task_data)  # type: ignore
 
         # Assert
         assert result is None
@@ -469,7 +469,7 @@ class TestParseManifestForAnalysis:
         manifest_logs = {'events': []}
 
         # Act
-        result = await _parse_manifest_for_analysis(run_id, run_response, manifest_logs)
+        result = await _parse_manifest_for_analysis(run_id, run_response, manifest_logs)  # type: ignore
 
         # Assert
         assert result is None
@@ -574,7 +574,7 @@ class TestGenerateAnalysisReport:
         analysis_data = None  # This will cause an exception
 
         # Act
-        result = await _generate_analysis_report(analysis_data)
+        result = await _generate_analysis_report(analysis_data)  # type: ignore
 
         # Assert
         assert isinstance(result, str)

@@ -421,7 +421,9 @@ def test_workflow_summary_validation():
     """Test WorkflowSummary validation."""
     # Test missing required fields
     with pytest.raises(ValidationError):
-        WorkflowSummary()
+        WorkflowSummary(  # type: ignore
+            # Missing required fields: id, arn, status, type, creationTime
+        )
 
     # Test with invalid datetime
     with pytest.raises(ValidationError):
@@ -429,8 +431,8 @@ def test_workflow_summary_validation():
             id='wfl-12345',
             arn='arn:aws:omics:us-east-1:123456789012:workflow/wfl-12345',
             status='ACTIVE',
-            type='WDL',
-            creationTime='invalid-datetime',
+            type='PRIVATE',
+            creationTime='invalid-datetime',  # type: ignore
         )
 
 
@@ -440,7 +442,9 @@ def test_run_summary_validation():
 
     # Test missing required fields
     with pytest.raises(ValidationError):
-        RunSummary()
+        RunSummary(  # type: ignore
+            # Missing required fields: id, arn, status, workflowId, workflowType, creationTime
+        )
 
     # Test with all required fields
     run = RunSummary(
@@ -458,7 +462,9 @@ def test_task_summary_validation():
     """Test TaskSummary validation."""
     # Test missing required fields
     with pytest.raises(ValidationError):
-        TaskSummary()
+        TaskSummary(  # type: ignore
+            # Missing required fields: taskId, status, name, cpus, memory
+        )
 
     # Test with all required fields
     task = TaskSummary(
@@ -477,7 +483,9 @@ def test_log_event_validation():
 
     # Test missing required fields
     with pytest.raises(ValidationError):
-        LogEvent()
+        LogEvent(  # type: ignore
+            # Missing required fields: timestamp, message
+        )
 
     # Test with all required fields
     event = LogEvent(timestamp=timestamp, message='Test message')
@@ -499,7 +507,12 @@ def test_analysis_result_validation():
     """Test AnalysisResult validation."""
     # Test missing required fields
     with pytest.raises(ValidationError):
-        AnalysisResult()
+        AnalysisResult(  # type: ignore
+            # Missing required fields: taskName, count, meanRunningSeconds, maximumRunningSeconds,
+            # stdDevRunningSeconds, maximumCpuUtilizationRatio, meanCpuUtilizationRatio,
+            # maximumMemoryUtilizationRatio, meanMemoryUtilizationRatio, recommendedCpus,
+            # recommendedMemoryGiB, recommendedInstanceType, maximumEstimatedUSD, meanEstimatedUSD
+        )
 
     # Test with negative values (should be allowed as no constraints defined)
     result = AnalysisResult(

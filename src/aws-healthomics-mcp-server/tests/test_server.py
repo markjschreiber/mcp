@@ -21,6 +21,7 @@ def test_server_initialization():
     # Assert
     assert server is not None
     assert server.name == 'awslabs.aws-healthomics-mcp-server'
+    assert server.instructions is not None
     assert 'AWS HealthOmics MCP Server' in server.instructions
 
 
@@ -56,6 +57,7 @@ def test_server_has_required_tools():
 
     # Verify all expected tools are mentioned in the server instructions
     instructions = server.instructions
+    assert instructions is not None
     for tool_name in expected_tools:
         assert f'**{tool_name}**' in instructions, (
             f'Tool {tool_name} not found in server instructions'

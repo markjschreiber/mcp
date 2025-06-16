@@ -360,6 +360,7 @@ async def list_runs(
             # Transform the response to a more user-friendly format
             batch_runs = []
             for run in response.get('items', []):
+                creation_time = run.get('creationTime')
                 run_info = {
                     'id': run.get('id'),
                     'arn': run.get('arn'),
@@ -367,8 +368,8 @@ async def list_runs(
                     'status': run.get('status'),
                     'workflowId': run.get('workflowId'),
                     'workflowType': run.get('workflowType'),
-                    'creationTime': run.get('creationTime').isoformat()
-                    if run.get('creationTime')
+                    'creationTime': creation_time.isoformat()
+                    if creation_time is not None
                     else None,
                 }
 
@@ -387,7 +388,7 @@ async def list_runs(
 
             # If no filtering needed, return first batch
             if not needs_filtering:
-                result = {'runs': all_runs}
+                result: Dict[str, Any] = {'runs': all_runs}
                 if current_token:
                     result['nextToken'] = current_token
                 return result
@@ -425,7 +426,7 @@ async def list_runs(
             return result
         else:
             # No filtering needed, return all collected runs
-            result = {'runs': all_runs}
+            result: Dict[str, Any] = {'runs': all_runs}
             if current_token:
                 result['nextToken'] = current_token
             return result
@@ -592,7 +593,7 @@ async def list_run_tasks(
 
             tasks.append(task_info)
 
-        result = {'tasks': tasks}
+        result: Dict[str, Any] = {'tasks': tasks}
         if 'nextToken' in response:
             result['nextToken'] = response['nextToken']
 

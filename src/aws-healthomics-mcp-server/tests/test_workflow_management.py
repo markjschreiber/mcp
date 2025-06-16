@@ -565,7 +565,8 @@ async def test_list_workflow_versions_client_error(mock_omics_client, mock_conte
         'Error': {'Code': 'ResourceNotFoundException', 'Message': 'Workflow not found'}
     }
     mock_omics_client.list_workflow_versions.side_effect = ClientError(
-        error_response, 'ListWorkflowVersions'
+        error_response,
+        'ListWorkflowVersions',  # type: ignore
     )
 
     with patch(

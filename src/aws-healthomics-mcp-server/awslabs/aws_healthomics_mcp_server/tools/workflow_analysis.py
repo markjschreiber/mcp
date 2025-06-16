@@ -249,7 +249,7 @@ async def _get_run_manifest_logs_internal(
         }
 
     except ClientError as e:
-        error_code = e.response['Error']['Code']
+        error_code = e.response.get('Error', {}).get('Code', 'Unknown')
         if error_code == 'ResourceNotFoundException':
             logger.warning(f'Log group not found for run UUID {run_uuid}')
             return {'events': [], 'error': 'Log group not found'}

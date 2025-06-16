@@ -40,7 +40,7 @@ def _safe_json_dumps(data: Any, **kwargs) -> str:
     return json.dumps(data, default=_json_serializer, **kwargs)
 
 
-def _convert_datetime_to_string(obj):
+def _convert_datetime_to_string(obj: Any) -> Any:
     """Recursively convert datetime objects to ISO strings in nested data structures."""
     if isinstance(obj, datetime):
         return obj.isoformat()
@@ -408,7 +408,7 @@ async def _get_run_analysis_data(run_ids: List[str]) -> Dict[str, Any]:
 
 
 async def _parse_manifest_for_analysis(
-    run_id: str, run_response: Dict[str, Any], manifest_logs: Dict[str, Any]
+    run_id: str, run_response: Any, manifest_logs: Dict[str, Any]
 ) -> Optional[Dict[str, Any]]:
     """Parse manifest logs to extract key metrics for analysis."""
     try:
