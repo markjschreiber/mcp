@@ -182,7 +182,7 @@ Or install from source:
 
 ```bash
 git clone <repository-url>
-cd aws-healthomics-mcp-server
+cd mcp/src/aws-healthomics-mcp-server
 uv sync
 uv run server.py
 ```
