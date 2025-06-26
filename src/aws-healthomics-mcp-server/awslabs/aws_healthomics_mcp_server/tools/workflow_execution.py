@@ -148,9 +148,12 @@ async def start_run(
         ...,
         description='S3 URI for the run outputs',
     ),
-    parameters: Dict[str, Any] = Field(
-        ...,
-        description='Parameters for the workflow',
+    parameters: Optional[Dict[str, Any]] = Field(
+        description="""Parameters for the workflow. Parameter names must match one of the keys in the workflow's parameter template.
+       All non-optional parameters must be present, if they are not provided the workflow run will not start. No other parameter names are allowed.
+       The descriptions of the parameters in the parameter template may provide clues to the type of the parameter. It may be
+       necessary to inspect the workflow definition to determine the appropriate parameter type.
+       """,
     ),
     workflow_version_name: Optional[str] = Field(
         None,
@@ -158,12 +161,12 @@ async def start_run(
     ),
     storage_type: str = Field(
         'DYNAMIC',
-        description='Storage type (STATIC or DYNAMIC)',
+        description='Storage type (STATIC or DYNAMIC). DYNAMIC is preferred except for runs with very large inputs (TiBs).',
     ),
     storage_capacity: Optional[int] = Field(
         None,
-        description='Storage capacity in GB (required for STATIC)',
-        ge=1,
+        description='Storage capacity in GB (required for STATIC). Storage is allocated in 1200 GiB chunks',
+        ge=1200,
     ),
     cache_id: Optional[str] = Field(
         None,
@@ -182,7 +185,12 @@ async def start_run(
         role_arn: ARN of the IAM role to use for the run
         name: Name for the run
         output_uri: S3 URI for the run outputs
-        parameters: Parameters for the workflow
+        parameters: Parameters for the workflow.
+           Parameter names must match one of the keys in the workflow's parameter template.
+           All non-optional parameters must be present, if they are not provided the workflow run will not start. No other parameter
+           names are allowed.
+           The descriptions of the parameters in the parameter template may provide clues to the type of the parameter. It may be
+           necessary to inspect the workflow definition to determine the appropriate parameter type.
         workflow_version_name: Optional version name to run
         storage_type: Storage type (STATIC or DYNAMIC)
         storage_capacity: Storage capacity in GB (required for STATIC)
