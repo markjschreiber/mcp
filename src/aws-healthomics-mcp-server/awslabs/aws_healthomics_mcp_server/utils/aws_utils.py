@@ -20,6 +20,7 @@ import botocore.session
 import io
 import os
 import zipfile
+from awslabs.aws_healthomics_mcp_server import __version__
 from awslabs.aws_healthomics_mcp_server.consts import DEFAULT_REGION
 from typing import Dict, Optional
 
@@ -34,7 +35,7 @@ def get_aws_session(region: Optional[str] = None) -> boto3.Session:
         boto3.Session: Configured AWS session
     """
     botocore_session = botocore.session.Session()
-    user_agent_extra = 'awslabs/mcp/aws-healthomics-mcp-server/__version__'
+    user_agent_extra = f'awslabs/mcp/aws-healthomics-mcp-server/{__version__}'
     botocore_session.user_agent_extra = user_agent_extra
     region = region or os.environ.get('AWS_REGION', DEFAULT_REGION)
     return boto3.Session(region_name=region, botocore_session=botocore_session)
