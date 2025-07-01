@@ -54,35 +54,35 @@ This MCP server provides tools for creating, managing, and analyzing genomic wor
 ## Available Tools
 
 ### Workflow Management
-- **ListWorkflows**: List available HealthOmics workflows
-- **CreateWorkflow**: Create a new HealthOmics workflow
-- **GetWorkflow**: Get details about a specific workflow
-- **CreateWorkflowVersion**: Create a new version of an existing workflow
-- **ListWorkflowVersions**: List versions of a workflow
+- **ListAHOWorkflows**: List available HealthOmics workflows
+- **CreateAHOWorkflow**: Create a new HealthOmics workflow
+- **GetAHOWorkflow**: Get details about a specific workflow
+- **CreateAHOWorkflowVersion**: Create a new version of an existing workflow
+- **ListAHOWorkflowVersions**: List versions of a workflow
 
 ### Workflow Execution
-- **StartRun**: Start a workflow run
-- **ListRuns**: List workflow runs
-- **GetRun**: Get details about a specific run
-- **ListRunTasks**: List tasks for a specific run
-- **GetRunTask**: Get details about a specific task
+- **StartAHORun**: Start a workflow run
+- **ListAHORuns**: List workflow runs
+- **GetAHORun**: Get details about a specific run
+- **ListAHORunTasks**: List tasks for a specific run
+- **GetAHORunTask**: Get details about a specific task
 
 ### Workflow Analysis
-- **GetRunLogs**: Retrieve high-level run logs showing workflow execution events
-- **GetRunManifestLogs**: Retrieve run manifest logs with workflow summary
-- **GetRunEngineLogs**: Retrieve engine logs containing STDOUT and STDERR
-- **GetTaskLogs**: Retrieve logs for specific workflow tasks
-- **AnalyzeRunPerformance**: Analyze workflow run performance and resource utilization to provide optimization recommendations
+- **GetAHORunLogs**: Retrieve high-level run logs showing workflow execution events
+- **GetAHORunManifestLogs**: Retrieve run manifest logs with workflow summary
+- **GetAHORunEngineLogs**: Retrieve engine logs containing STDOUT and STDERR
+- **GetAHOTaskLogs**: Retrieve logs for specific workflow tasks
+- **AnalyzeAHORunPerformance**: Analyze workflow run performance and resource utilization to provide optimization recommendations
 
 ### Troubleshooting
-- **DiagnoseRunFailure**: Diagnose a failed workflow run
+- **DiagnoseAHORunFailure**: Diagnose a failed workflow run
 
 ### Helper Tools
-- **PackageWorkflow**: Package workflow definition files into a base64-encoded ZIP
-- **GetSupportedRegions**: Get the list of AWS regions where HealthOmics is available
+- **PackageAHOWorkflow**: Package workflow definition files into a base64-encoded ZIP
+- **GetAHOSupportedRegions**: Get the list of AWS regions where HealthOmics is available
 
 ## Service Availability
-AWS HealthOmics is available in select AWS regions. Use the GetSupportedRegions tool to get the current list of supported regions.
+AWS HealthOmics is available in select AWS regions. Use the GetAHOSupportedRegions tool to get the current list of supported regions.
 """,
     dependencies=[
         'boto3',
@@ -92,32 +92,32 @@ AWS HealthOmics is available in select AWS regions. Use the GetSupportedRegions 
 )
 
 # Register workflow management tools
-mcp.tool(name='ListWorkflows')(list_workflows)
-mcp.tool(name='CreateWorkflow')(create_workflow)
-mcp.tool(name='GetWorkflow')(get_workflow)
-mcp.tool(name='CreateWorkflowVersion')(create_workflow_version)
-mcp.tool(name='ListWorkflowVersions')(list_workflow_versions)
+mcp.tool(name='ListAHOWorkflows')(list_workflows)
+mcp.tool(name='CreateAHOWorkflow')(create_workflow)
+mcp.tool(name='GetAHOWorkflow')(get_workflow)
+mcp.tool(name='CreateAHOWorkflowVersion')(create_workflow_version)
+mcp.tool(name='ListAHOWorkflowVersions')(list_workflow_versions)
 
 # Register workflow execution tools
-mcp.tool(name='StartRun')(start_run)
-mcp.tool(name='ListRuns')(list_runs)
-mcp.tool(name='GetRun')(get_run)
-mcp.tool(name='ListRunTasks')(list_run_tasks)
-mcp.tool(name='GetRunTask')(get_run_task)
+mcp.tool(name='StartAHORun')(start_run)
+mcp.tool(name='ListAHORuns')(list_runs)
+mcp.tool(name='GetAHORun')(get_run)
+mcp.tool(name='ListAHORunTasks')(list_run_tasks)
+mcp.tool(name='GetAHORunTask')(get_run_task)
 
 # Register workflow analysis tools
-mcp.tool(name='GetRunLogs')(get_run_logs)
-mcp.tool(name='GetRunManifestLogs')(get_run_manifest_logs)
-mcp.tool(name='GetRunEngineLogs')(get_run_engine_logs)
-mcp.tool(name='GetTaskLogs')(get_task_logs)
-mcp.tool(name='AnalyzeRunPerformance')(analyze_run_performance)
+mcp.tool(name='GetAHORunLogs')(get_run_logs)
+mcp.tool(name='GetAHORunManifestLogs')(get_run_manifest_logs)
+mcp.tool(name='GetAHORunEngineLogs')(get_run_engine_logs)
+mcp.tool(name='GetAHOTaskLogs')(get_task_logs)
+mcp.tool(name='AnalyzeAHORunPerformance')(analyze_run_performance)
 
 # Register troubleshooting tools
-mcp.tool(name='DiagnoseRunFailure')(diagnose_run_failure)
+mcp.tool(name='DiagnoseAHORunFailure')(diagnose_run_failure)
 
 # Register helper tools
-mcp.tool(name='PackageWorkflow')(package_workflow)
-mcp.tool(name='GetSupportedRegions')(get_supported_regions)
+mcp.tool(name='PackageAHOWorkflow')(package_workflow)
+mcp.tool(name='GetAHOSupportedRegions')(get_supported_regions)
 
 
 def main():

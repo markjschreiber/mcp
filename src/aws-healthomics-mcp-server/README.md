@@ -32,33 +32,33 @@ This MCP server provides tools for:
 
 ### Workflow Management Tools
 
-1. **ListWorkflows** - List available HealthOmics workflows with pagination support
-2. **CreateWorkflow** - Create new workflows with WDL, CWL, or Nextflow definitions
-3. **GetWorkflow** - Retrieve detailed workflow information and export definitions
-4. **CreateWorkflowVersion** - Create new versions of existing workflows
-5. **ListWorkflowVersions** - List all versions of a specific workflow
-6. **PackageWorkflow** - Package workflow files into base64-encoded ZIP format
+1. **ListAHOWorkflows** - List available HealthOmics workflows with pagination support
+2. **CreateAHOWorkflow** - Create new workflows with WDL, CWL, or Nextflow definitions
+3. **GetAHOWorkflow** - Retrieve detailed workflow information and export definitions
+4. **CreateAHOWorkflowVersion** - Create new versions of existing workflows
+5. **ListAHOWorkflowVersions** - List all versions of a specific workflow
+6. **PackageAHOWorkflow** - Package workflow files into base64-encoded ZIP format
 
 ### Workflow Execution Tools
 
-1. **StartRun** - Start workflow runs with custom parameters and resource configuration
-2. **ListRuns** - List workflow runs with filtering by status and date ranges
-3. **GetRun** - Retrieve detailed run information including status and metadata
-4. **ListRunTasks** - List tasks for specific runs with status filtering
-5. **GetRunTask** - Get detailed information about specific workflow tasks
+1. **StartAHORun** - Start workflow runs with custom parameters and resource configuration
+2. **ListAHORuns** - List workflow runs with filtering by status and date ranges
+3. **GetAHORun** - Retrieve detailed run information including status and metadata
+4. **ListAHORunTasks** - List tasks for specific runs with status filtering
+5. **GetAHORunTask** - Get detailed information about specific workflow tasks
 
 ### Analysis and Troubleshooting Tools
 
-1. **AnalyzeRunPerformance** - Analyze workflow run performance and resource utilization
-2. **DiagnoseRunFailure** - Comprehensive diagnosis of failed workflow runs with remediation suggestions
-3. **GetRunLogs** - Access high-level workflow execution logs and events
-4. **GetRunEngineLogs** - Retrieve workflow engine logs (STDOUT/STDERR) for debugging
-5. **GetRunManifestLogs** - Access run manifest logs with runtime information and metrics
-6. **GetTaskLogs** - Get task-specific logs for debugging individual workflow steps
+1. **AnalyzeAHORunPerformance** - Analyze workflow run performance and resource utilization
+2. **DiagnoseAHORunFailure** - Comprehensive diagnosis of failed workflow runs with remediation suggestions
+3. **GetAHORunLogs** - Access high-level workflow execution logs and events
+4. **GetAHORunEngineLogs** - Retrieve workflow engine logs (STDOUT/STDERR) for debugging
+5. **GetAHORunManifestLogs** - Access run manifest logs with runtime information and metrics
+6. **GetAHOTaskLogs** - Get task-specific logs for debugging individual workflow steps
 
 ### Region Management Tools
 
-1. **GetSupportedRegions** - List AWS regions where HealthOmics is available
+1. **GetAHOSupportedRegions** - List AWS regions where HealthOmics is available
 
 ## Instructions for AI Assistants
 
@@ -76,7 +76,7 @@ AWS HealthOmics is designed for genomic data analysis workflows. Key concepts:
 ### Workflow Management Best Practices
 
 1. **Creating Workflows**:
-   - Use `PackageWorkflow` to bundle workflow files before creating
+   - Use `PackageAHOWorkflow` to bundle workflow files before creating
    - Validate workflows with appropriate language syntax (WDL, CWL, Nextflow)
    - Include parameter templates to guide users on required inputs
 
@@ -94,15 +94,15 @@ AWS HealthOmics is designed for genomic data analysis workflows. Key concepts:
    - Configure caching when appropriate to save costs and time
 
 2. **Monitoring Runs**:
-   - Use `ListRuns` with status filters to track active workflows
-   - Check individual run details with `GetRun` for comprehensive status
-   - Monitor tasks with `ListRunTasks` to identify bottlenecks
+   - Use `ListAHORuns` with status filters to track active workflows
+   - Check individual run details with `GetAHORun` for comprehensive status
+   - Monitor tasks with `ListAHORunTasks` to identify bottlenecks
 
 ### Troubleshooting Failed Runs
 
 When workflows fail, follow this diagnostic approach:
 
-1. **Start with DiagnoseRunFailure**: This comprehensive tool provides:
+1. **Start with DiagnoseAHORunFailure**: This comprehensive tool provides:
    - Failure reasons and error analysis
    - Failed task identification
    - Log summaries and recommendations
@@ -115,7 +115,7 @@ When workflows fail, follow this diagnostic approach:
    - **Manifest Logs**: Resource utilization and workflow summary information
 
 3. **Performance Analysis**:
-   - Use `AnalyzeRunPerformance` to identify resource bottlenecks
+   - Use `AnalyzeAHORunPerformance` to identify resource bottlenecks
    - Review task resource utilization patterns
    - Optimize workflow parameters based on analysis results
 
@@ -124,7 +124,7 @@ When workflows fail, follow this diagnostic approach:
 1. **Workflow Development**:
    ```
    User: "Help me create a new genomic variant calling workflow"
-   → Use CreateWorkflow with WDL/CWL/Nextflow definition
+   → Use CreateAHOWorkflow with WDL/CWL/Nextflow definition
    → Package workflow files appropriately
    → Validate syntax and parameters
    ```
@@ -132,15 +132,15 @@ When workflows fail, follow this diagnostic approach:
 2. **Production Execution**:
    ```
    User: "Run my alignment workflow on these FASTQ files"
-   → Use StartRun with appropriate parameters
-   → Monitor with ListRuns and GetRun
-   → Track task progress with ListRunTasks
+   → Use StartAHORun with appropriate parameters
+   → Monitor with ListAHORuns and GetAHORun
+   → Track task progress with ListAHORunTasks
    ```
 
 3. **Troubleshooting**:
    ```
    User: "My workflow failed, what went wrong?"
-   → Use DiagnoseRunFailure for comprehensive analysis
+   → Use DiagnoseAHORunFailure for comprehensive analysis
    → Access specific logs based on failure type
    → Provide actionable remediation steps
    ```
@@ -148,7 +148,7 @@ When workflows fail, follow this diagnostic approach:
 4. **Performance Optimization**:
    ```
    User: "How can I make my workflow run faster?"
-   → Use AnalyzeRunPerformance to identify bottlenecks
+   → Use AnalyzeAHORunPerformance to identify bottlenecks
    → Review resource utilization patterns
    → Suggest optimization strategies
    ```
@@ -156,7 +156,7 @@ When workflows fail, follow this diagnostic approach:
 ### Important Considerations
 
 - **IAM Permissions**: Ensure proper IAM roles with HealthOmics permissions
-- **Regional Availability**: Use `GetSupportedRegions` to verify service availability
+- **Regional Availability**: Use `GetAHOSupportedRegions` to verify service availability
 - **Cost Management**: Monitor storage and compute costs, especially with STATIC storage
 - **Data Security**: Follow genomic data handling best practices and compliance requirements
 - **Resource Limits**: Be aware of service quotas and limits for concurrent runs
