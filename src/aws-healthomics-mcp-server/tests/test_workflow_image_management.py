@@ -1233,3 +1233,403 @@ class TestCheckEcrPullThroughCacheForOmics:
 
             # Error should be called twice - once for the specific error, once for the general error
             assert mock_ctx.error.call_count == 2
+
+
+class TestAnalyzeServiceRoleEcrPermissions:
+    """Test service role ECR permissions analysis."""
+
+    @pytest.mark.asyncio
+    async def test_analyze_service_role_success(self):
+        """Test successful service role analysis with all required permissions."""
+        from awslabs.aws_healthomics_mcp_server.tools.workflow_image_management import (
+            analyze_service_role_ecr_permissions,
+        )
+
+        mock_ctx = AsyncMock()
+        role_arn = 'arn:aws:iam::123456789012:role/HealthOmicsServiceRole'
+
+        # Mock IAM client and responses
+        mock_iam_client = MagicMock()
+
+        # Mock role details
+        mock_iam_client.get_role.return_value = {
+            'Role': {
+                'RoleName': 'HealthOmicsServiceRole',
+                'AssumeRolePolicyDocument': {
+                    'Version': '2012-10-17',
+                    'Statement': [
+                        {
+                            'Effect': 'Allow',
+                            'Principal': {'Service': 'omics.amazonaws.com'},
+                            'Action': 'sts:AssumeRole',
+                        }
+                    ],
+                },
+            }
+        }
+
+        # Mock managed policies
+        mock_iam_client.list_attached_role_policies.return_value = {
+            'AttachedPolicies': [
+                {
+                    'PolicyName': 'AmazonEC2ContainerRegistryReadOnlyAccess',
+                    'PolicyArn': 'arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnlyAccess',
+                }
+            ]
+        }
+
+        # Mock inline policies
+        mock_iam_client.list_role_policies.return_value = {'PolicyNames': []}
+
+        # Mock policy version
+        mock_iam_client.get_policy.return_value = {'Policy': {'DefaultVersionId': 'v1'}}
+
+        # Mock policy document with required ECR permissions
+        policy_document = {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Effect': 'Allow',
+                    'Action': [
+                        'ecr:BatchGetImage',
+                        'ecr:GetDownloadUrlForLayer',
+                        'ecr:BatchCheckLayerAvailability',
+                    ],
+                    'Resource': '*',
+                }
+            ],
+        }
+        mock_iam_client.get_policy_version.return_value = {
+            'PolicyVersion': {'Document': policy_document}
+        }
+
+        with patch(
+            'awslabs.aws_healthomics_mcp_server.tools.workflow_image_management.create_aws_client'
+        ) as mock_create_client:
+            mock_create_client.return_value = mock_iam_client
+
+            result = await analyze_service_role_ecr_permissions(mock_ctx, role_arn)
+
+            # Verify results
+            assert result['role_arn'] == role_arn
+            assert result['role_name'] == 'HealthOmicsServiceRole'
+            assert result['has_required_permissions'] is True
+            assert len(result['missing_permissions']) == 0
+            assert len(result['found_permissions']) == 3
+            assert result['summary']['trust_policy_allows_healthomics'] is True
+
+    @pytest.mark.asyncio
+    async def test_analyze_service_role_missing_permissions(self):
+        """Test service role analysis with missing ECR permissions."""
+        from awslabs.aws_healthomics_mcp_server.tools.workflow_image_management import (
+            analyze_service_role_ecr_permissions,
+        )
+
+        mock_ctx = AsyncMock()
+        role_arn = 'arn:aws:iam::123456789012:role/IncompleteRole'
+
+        mock_iam_client = MagicMock()
+
+        # Mock role details
+        mock_iam_client.get_role.return_value = {
+            'Role': {
+                'RoleName': 'IncompleteRole',
+                'AssumeRolePolicyDocument': {
+                    'Version': '2012-10-17',
+                    'Statement': [
+                        {
+                            'Effect': 'Allow',
+                            'Principal': {'Service': 'omics.amazonaws.com'},
+                            'Action': 'sts:AssumeRole',
+                        }
+                    ],
+                },
+            }
+        }
+
+        # Mock managed policies with partial permissions
+        mock_iam_client.list_attached_role_policies.return_value = {
+            'AttachedPolicies': [
+                {
+                    'PolicyName': 'PartialECRPolicy',
+                    'PolicyArn': 'arn:aws:iam::123456789012:policy/PartialECRPolicy',
+                }
+            ]
+        }
+
+        mock_iam_client.list_role_policies.return_value = {'PolicyNames': []}
+
+        mock_iam_client.get_policy.return_value = {'Policy': {'DefaultVersionId': 'v1'}}
+
+        # Policy with only some ECR permissions
+        policy_document = {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Effect': 'Allow',
+                    'Action': ['ecr:BatchGetImage'],  # Missing other permissions
+                    'Resource': '*',
+                }
+            ],
+        }
+        mock_iam_client.get_policy_version.return_value = {
+            'PolicyVersion': {'Document': policy_document}
+        }
+
+        with patch(
+            'awslabs.aws_healthomics_mcp_server.tools.workflow_image_management.create_aws_client'
+        ) as mock_create_client:
+            mock_create_client.return_value = mock_iam_client
+
+            result = await analyze_service_role_ecr_permissions(mock_ctx, role_arn)
+
+            # Verify results
+            assert result['has_required_permissions'] is False
+            assert len(result['missing_permissions']) == 2
+            assert 'ecr:GetDownloadUrlForLayer' in result['missing_permissions']
+            assert 'ecr:BatchCheckLayerAvailability' in result['missing_permissions']
+            assert 'ecr:BatchGetImage' in result['found_permissions']
+
+    @pytest.mark.asyncio
+    async def test_analyze_service_role_not_found(self):
+        """Test service role analysis with non-existent role."""
+        from awslabs.aws_healthomics_mcp_server.tools.workflow_image_management import (
+            analyze_service_role_ecr_permissions,
+        )
+
+        mock_ctx = AsyncMock()
+        role_arn = 'arn:aws:iam::123456789012:role/NonExistentRole'
+
+        mock_iam_client = MagicMock()
+        mock_iam_client.exceptions.NoSuchEntityException = Exception
+        mock_iam_client.get_role.side_effect = Exception('Role not found')
+
+        with patch(
+            'awslabs.aws_healthomics_mcp_server.tools.workflow_image_management.create_aws_client'
+        ) as mock_create_client:
+            mock_create_client.return_value = mock_iam_client
+
+            with pytest.raises(ValueError, match='IAM role not found'):
+                await analyze_service_role_ecr_permissions(mock_ctx, role_arn)
+
+            # Error should be called twice - once for the specific error, once for the general error
+            assert mock_ctx.error.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_analyze_service_role_wrong_trust_policy(self):
+        """Test service role analysis with incorrect trust policy."""
+        from awslabs.aws_healthomics_mcp_server.tools.workflow_image_management import (
+            analyze_service_role_ecr_permissions,
+        )
+
+        mock_ctx = AsyncMock()
+        role_arn = 'arn:aws:iam::123456789012:role/WrongTrustRole'
+
+        mock_iam_client = MagicMock()
+
+        # Mock role with wrong trust policy
+        mock_iam_client.get_role.return_value = {
+            'Role': {
+                'RoleName': 'WrongTrustRole',
+                'AssumeRolePolicyDocument': {
+                    'Version': '2012-10-17',
+                    'Statement': [
+                        {
+                            'Effect': 'Allow',
+                            'Principal': {'Service': 'lambda.amazonaws.com'},  # Wrong service
+                            'Action': 'sts:AssumeRole',
+                        }
+                    ],
+                },
+            }
+        }
+
+        mock_iam_client.list_attached_role_policies.return_value = {'AttachedPolicies': []}
+        mock_iam_client.list_role_policies.return_value = {'PolicyNames': []}
+
+        with patch(
+            'awslabs.aws_healthomics_mcp_server.tools.workflow_image_management.create_aws_client'
+        ) as mock_create_client:
+            mock_create_client.return_value = mock_iam_client
+
+            result = await analyze_service_role_ecr_permissions(mock_ctx, role_arn)
+
+            # Verify trust policy issue is detected
+            assert result['summary']['trust_policy_allows_healthomics'] is False
+            assert any(
+                'trust policy allows omics.amazonaws.com' in rec
+                for rec in result['recommendations']
+            )
+
+
+class TestAnalyzePolicyForEcrPermissions:
+    """Test policy document analysis for ECR permissions."""
+
+    def test_analyze_policy_with_specific_permissions(self):
+        """Test analyzing policy with specific ECR permissions."""
+        from awslabs.aws_healthomics_mcp_server.tools.workflow_image_management import (
+            _analyze_policy_for_ecr_permissions,
+        )
+
+        policy_document = {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Effect': 'Allow',
+                    'Action': [
+                        'ecr:BatchGetImage',
+                        'ecr:GetDownloadUrlForLayer',
+                        's3:GetObject',  # Non-ECR permission
+                    ],
+                    'Resource': '*',
+                }
+            ],
+        }
+
+        required_permissions = [
+            'ecr:BatchGetImage',
+            'ecr:GetDownloadUrlForLayer',
+            'ecr:BatchCheckLayerAvailability',
+        ]
+
+        result = _analyze_policy_for_ecr_permissions(policy_document, required_permissions)
+
+        assert 'ecr:BatchGetImage' in result
+        assert 'ecr:GetDownloadUrlForLayer' in result
+        assert 'ecr:BatchCheckLayerAvailability' not in result
+        assert len(result) == 2
+
+    def test_analyze_policy_with_wildcard_permissions(self):
+        """Test analyzing policy with wildcard ECR permissions."""
+        from awslabs.aws_healthomics_mcp_server.tools.workflow_image_management import (
+            _analyze_policy_for_ecr_permissions,
+        )
+
+        policy_document = {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Effect': 'Allow',
+                    'Action': 'ecr:*',
+                    'Resource': '*',
+                }
+            ],
+        }
+
+        required_permissions = [
+            'ecr:BatchGetImage',
+            'ecr:GetDownloadUrlForLayer',
+            'ecr:BatchCheckLayerAvailability',
+        ]
+
+        result = _analyze_policy_for_ecr_permissions(policy_document, required_permissions)
+
+        assert len(result) == 3
+        assert all(perm in result for perm in required_permissions)
+
+    def test_analyze_policy_with_deny_effect(self):
+        """Test analyzing policy with Deny effect (should be ignored)."""
+        from awslabs.aws_healthomics_mcp_server.tools.workflow_image_management import (
+            _analyze_policy_for_ecr_permissions,
+        )
+
+        policy_document = {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Effect': 'Deny',  # Should be ignored
+                    'Action': 'ecr:BatchGetImage',
+                    'Resource': '*',
+                }
+            ],
+        }
+
+        required_permissions = ['ecr:BatchGetImage']
+
+        result = _analyze_policy_for_ecr_permissions(policy_document, required_permissions)
+
+        assert len(result) == 0
+
+
+class TestCheckTrustPolicyForHealthomics:
+    """Test trust policy analysis for HealthOmics access."""
+
+    def test_trust_policy_allows_healthomics(self):
+        """Test trust policy that allows HealthOmics."""
+        from awslabs.aws_healthomics_mcp_server.tools.workflow_image_management import (
+            _check_trust_policy_for_healthomics,
+        )
+
+        trust_policy = {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Effect': 'Allow',
+                    'Principal': {'Service': 'omics.amazonaws.com'},
+                    'Action': 'sts:AssumeRole',
+                }
+            ],
+        }
+
+        result = _check_trust_policy_for_healthomics(trust_policy)
+        assert result is True
+
+    def test_trust_policy_wrong_service(self):
+        """Test trust policy with wrong service principal."""
+        from awslabs.aws_healthomics_mcp_server.tools.workflow_image_management import (
+            _check_trust_policy_for_healthomics,
+        )
+
+        trust_policy = {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Effect': 'Allow',
+                    'Principal': {'Service': 'lambda.amazonaws.com'},
+                    'Action': 'sts:AssumeRole',
+                }
+            ],
+        }
+
+        result = _check_trust_policy_for_healthomics(trust_policy)
+        assert result is False
+
+    def test_trust_policy_multiple_services(self):
+        """Test trust policy with multiple service principals including HealthOmics."""
+        from awslabs.aws_healthomics_mcp_server.tools.workflow_image_management import (
+            _check_trust_policy_for_healthomics,
+        )
+
+        trust_policy = {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Effect': 'Allow',
+                    'Principal': {'Service': ['lambda.amazonaws.com', 'omics.amazonaws.com']},
+                    'Action': 'sts:AssumeRole',
+                }
+            ],
+        }
+
+        result = _check_trust_policy_for_healthomics(trust_policy)
+        assert result is True
+
+    def test_trust_policy_deny_effect(self):
+        """Test trust policy with Deny effect (should be ignored)."""
+        from awslabs.aws_healthomics_mcp_server.tools.workflow_image_management import (
+            _check_trust_policy_for_healthomics,
+        )
+
+        trust_policy = {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Effect': 'Deny',  # Should be ignored
+                    'Principal': {'Service': 'omics.amazonaws.com'},
+                    'Action': 'sts:AssumeRole',
+                }
+            ],
+        }
+
+        result = _check_trust_policy_for_healthomics(trust_policy)
+        assert result is False

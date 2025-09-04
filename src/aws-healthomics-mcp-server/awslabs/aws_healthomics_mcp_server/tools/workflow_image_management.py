@@ -653,3 +653,282 @@ async def check_ecr_pull_through_cache_for_omics(
         logger.error(error_message)
         await ctx.error(error_message)
         raise
+
+
+async def analyze_service_role_ecr_permissions(
+    ctx: Context,
+    role_arn: str = Field(
+        ...,
+        description='ARN of the IAM service role to analyze for ECR permissions',
+    ),
+) -> Dict[str, Any]:
+    """Analyze a service role for required ECR permissions for HealthOmics workflows.
+
+    This function performs static analysis of an IAM service role to check if it has
+    the minimum required ECR permissions for HealthOmics workflows that use container images.
+
+    Required ECR permissions for HealthOmics service roles:
+    - ecr:BatchGetImage
+    - ecr:GetDownloadUrlForLayer
+    - ecr:BatchCheckLayerAvailability
+
+    IMPORTANT CAVEATS:
+    1. Actual access will be determined at runtime and can be influenced by additional
+       factors that are not checked here, such as Service Control Policies (SCPs),
+       permission boundaries, and other resource-based restrictions.
+    2. The permissions may not be sufficient for cross-account scenarios where additional
+       trust relationships and cross-account policies may be required.
+    3. This analysis only checks basic IAM role policies and does not validate
+       all possible AWS IAM configurations that could affect access.
+    4. The analysis is performed on the current state of the role and does not account
+       for time-based conditions or other dynamic policy elements.
+
+    Args:
+        ctx: MCP context for error reporting
+        role_arn: ARN of the IAM service role to analyze
+
+    Returns:
+        Dictionary containing analysis results including:
+        - role_arn: The analyzed role ARN
+        - has_required_permissions: Whether all required ECR permissions are present
+        - missing_permissions: List of missing ECR permissions
+        - policy_analysis: Detailed analysis of attached policies
+        - recommendations: Actionable recommendations for fixing permission issues
+    """
+    try:
+        # Create IAM client
+        iam_client = create_aws_client('iam')
+
+        # Extract role name from ARN
+        role_name = role_arn.split('/')[-1]
+
+        required_ecr_permissions = [
+            'ecr:BatchGetImage',
+            'ecr:GetDownloadUrlForLayer',
+            'ecr:BatchCheckLayerAvailability',
+        ]
+
+        # Get role details
+        try:
+            role_response = iam_client.get_role(RoleName=role_name)
+            role = role_response['Role']
+        except iam_client.exceptions.NoSuchEntityException:
+            error_message = f'IAM role not found: {role_name}'
+            logger.error(error_message)
+            await ctx.error(error_message)
+            raise ValueError(error_message)
+
+        # Get attached managed policies
+        managed_policies_response = iam_client.list_attached_role_policies(RoleName=role_name)
+        attached_policies = managed_policies_response.get('AttachedPolicies', [])
+
+        # Get inline policies
+        inline_policies_response = iam_client.list_role_policies(RoleName=role_name)
+        inline_policy_names = inline_policies_response.get('PolicyNames', [])
+
+        # Analyze permissions
+        found_permissions = set()
+        policy_analysis = {'managed_policies': [], 'inline_policies': [], 'trust_policy': {}}
+
+        # Check managed policies
+        for policy in attached_policies:
+            policy_arn = policy['PolicyArn']
+            policy_name = policy['PolicyName']
+
+            try:
+                # Get policy version
+                policy_response = iam_client.get_policy(PolicyArn=policy_arn)
+                default_version_id = policy_response['Policy']['DefaultVersionId']
+
+                # Get policy document
+                policy_version_response = iam_client.get_policy_version(
+                    PolicyArn=policy_arn, VersionId=default_version_id
+                )
+                policy_document = policy_version_response['PolicyVersion']['Document']
+
+                # Analyze policy statements
+                ecr_permissions_in_policy = _analyze_policy_for_ecr_permissions(
+                    policy_document, required_ecr_permissions
+                )
+                found_permissions.update(ecr_permissions_in_policy)
+
+                policy_analysis['managed_policies'].append(
+                    {
+                        'policy_name': policy_name,
+                        'policy_arn': policy_arn,
+                        'ecr_permissions_found': list(ecr_permissions_in_policy),
+                        'has_ecr_permissions': bool(ecr_permissions_in_policy),
+                    }
+                )
+
+            except Exception as e:
+                logger.warning(f'Error analyzing managed policy {policy_name}: {str(e)}')
+                policy_analysis['managed_policies'].append(
+                    {
+                        'policy_name': policy_name,
+                        'policy_arn': policy_arn,
+                        'error': f'Failed to analyze: {str(e)}',
+                        'ecr_permissions_found': [],
+                        'has_ecr_permissions': False,
+                    }
+                )
+
+        # Check inline policies
+        for policy_name in inline_policy_names:
+            try:
+                policy_response = iam_client.get_role_policy(
+                    RoleName=role_name, PolicyName=policy_name
+                )
+                policy_document = policy_response['PolicyDocument']
+
+                # Analyze policy statements
+                ecr_permissions_in_policy = _analyze_policy_for_ecr_permissions(
+                    policy_document, required_ecr_permissions
+                )
+                found_permissions.update(ecr_permissions_in_policy)
+
+                policy_analysis['inline_policies'].append(
+                    {
+                        'policy_name': policy_name,
+                        'ecr_permissions_found': list(ecr_permissions_in_policy),
+                        'has_ecr_permissions': bool(ecr_permissions_in_policy),
+                    }
+                )
+
+            except Exception as e:
+                logger.warning(f'Error analyzing inline policy {policy_name}: {str(e)}')
+                policy_analysis['inline_policies'].append(
+                    {
+                        'policy_name': policy_name,
+                        'error': f'Failed to analyze: {str(e)}',
+                        'ecr_permissions_found': [],
+                        'has_ecr_permissions': False,
+                    }
+                )
+
+        # Analyze trust policy
+        trust_policy = role.get('AssumeRolePolicyDocument', {})
+        policy_analysis['trust_policy'] = {
+            'allows_healthomics': _check_trust_policy_for_healthomics(trust_policy),
+            'document': trust_policy,
+        }
+
+        # Determine missing permissions
+        missing_permissions = [
+            perm for perm in required_ecr_permissions if perm not in found_permissions
+        ]
+
+        has_required_permissions = len(missing_permissions) == 0
+
+        # Generate recommendations
+        recommendations = []
+        if missing_permissions:
+            recommendations.append(
+                f'Add the following ECR permissions to the role: {", ".join(missing_permissions)}'
+            )
+            recommendations.append(
+                'Consider attaching the AWS managed policy "AmazonEC2ContainerRegistryReadOnlyAccess" '
+                'which includes the required ECR permissions'
+            )
+            recommendations.append(
+                'Alternatively, create a custom policy with the specific ECR permissions needed'
+            )
+
+        if not policy_analysis['trust_policy']['allows_healthomics']:
+            recommendations.append(
+                'Ensure the role trust policy allows omics.amazonaws.com to assume the role'
+            )
+
+        if has_required_permissions:
+            recommendations.append(
+                'Role has all required ECR permissions for HealthOmics workflows using container images'
+            )
+
+        return {
+            'role_arn': role_arn,
+            'role_name': role_name,
+            'has_required_permissions': has_required_permissions,
+            'required_permissions': required_ecr_permissions,
+            'found_permissions': list(found_permissions),
+            'missing_permissions': missing_permissions,
+            'policy_analysis': policy_analysis,
+            'recommendations': recommendations,
+            'summary': {
+                'total_managed_policies': len(attached_policies),
+                'total_inline_policies': len(inline_policy_names),
+                'policies_with_ecr_permissions': len(
+                    [
+                        p
+                        for p in policy_analysis['managed_policies']
+                        + policy_analysis['inline_policies']
+                        if p.get('has_ecr_permissions', False)
+                    ]
+                ),
+                'trust_policy_allows_healthomics': policy_analysis['trust_policy'][
+                    'allows_healthomics'
+                ],
+            },
+        }
+
+    except Exception as e:
+        error_message = f'Error analyzing service role ECR permissions: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise
+
+
+def _analyze_policy_for_ecr_permissions(
+    policy_document: Dict[str, Any], required_permissions: List[str]
+) -> set:
+    """Analyze a policy document for ECR permissions."""
+    found_permissions = set()
+
+    statements = policy_document.get('Statement', [])
+    if isinstance(statements, dict):
+        statements = [statements]
+
+    for statement in statements:
+        if statement.get('Effect', '').upper() != 'ALLOW':
+            continue
+
+        actions = statement.get('Action', [])
+        if isinstance(actions, str):
+            actions = [actions]
+
+        # Check for wildcard permissions
+        if '*' in actions or 'ecr:*' in actions:
+            found_permissions.update(required_permissions)
+            continue
+
+        # Check for specific permissions
+        for action in actions:
+            if action in required_permissions:
+                found_permissions.add(action)
+
+    return found_permissions
+
+
+def _check_trust_policy_for_healthomics(trust_policy: Dict[str, Any]) -> bool:
+    """Check if trust policy allows HealthOmics to assume the role."""
+    statements = trust_policy.get('Statement', [])
+    if isinstance(statements, dict):
+        statements = [statements]
+
+    for statement in statements:
+        if statement.get('Effect', '').upper() != 'ALLOW':
+            continue
+
+        action = statement.get('Action', '')
+        if action != 'sts:AssumeRole':
+            continue
+
+        principal = statement.get('Principal', {})
+        if isinstance(principal, str):
+            return principal == 'omics.amazonaws.com'
+        elif isinstance(principal, dict):
+            service_principals = principal.get('Service', [])
+            if isinstance(service_principals, str):
+                service_principals = [service_principals]
+            return 'omics.amazonaws.com' in service_principals
+
+    return False

@@ -46,6 +46,8 @@ This MCP server provides tools for:
 ### Workflow Image Management Tools
 
 1. **VerifyAHOContainerImages** - Verify that container images are accessible to AWS HealthOmics by checking ECR repository existence and policies
+2. **CheckAHOECRPullThroughCache** - Check which ECR pull through caches can be used by HealthOmics by validating registry policies and repository creation templates
+3. **AnalyzeAHOServiceRoleECRPermissions** - Analyze a service role for required ECR permissions for HealthOmics workflows using container images
 
 ### Workflow Execution Tools
 
@@ -145,14 +147,31 @@ AWS HealthOmics workflows often use container images stored in Amazon ECR. The M
      - `ecr:BatchGetImage`
      - `ecr:BatchCheckLayerAvailability`
 
-2. **ECR Policy Generation**:
+2. **ECR Pull Through Cache Compatibility**:
+   - **CheckAHOECRPullThroughCache**: Analyze ECR pull through cache configurations for HealthOmics compatibility
+   - **Registry policy validation**: Check if registry permissions allow HealthOmics to create repositories and pull images
+   - **Repository creation templates**: Verify that templates exist and are properly configured for pull through cache
+   - **Compatibility assessment**: Identify which pull through cache prefixes can be used with HealthOmics workflows
+   - **Actionable recommendations**: Provide specific steps to fix incompatible configurations
+
+3. **Service Role ECR Permissions Analysis**:
+   - **AnalyzeAHOServiceRoleECRPermissions**: Perform static analysis of IAM service roles for required ECR permissions
+   - **Permission validation**: Check if the role has the minimum required ECR permissions for HealthOmics workflows:
+     - `ecr:BatchGetImage`
+     - `ecr:GetDownloadUrlForLayer`
+     - `ecr:BatchCheckLayerAvailability`
+   - **Trust policy verification**: Ensure the role trust policy allows `omics.amazonaws.com` to assume the role
+   - **Policy analysis**: Examine both managed and inline policies attached to the role
+   - **Remediation guidance**: Provide specific recommendations for fixing missing permissions
+
+3. **ECR Policy Generation**:
    - **GenAHOECRRepoPolicy**: Generate compliant ECR repository policies for HealthOmics access
    - **Service principal access**: Automatically includes `omics.amazonaws.com` as a trusted service
    - **Additional principals**: Support for adding custom AWS accounts, IAM roles, or other services
    - **Cross-account access**: Optional support for cross-account image sharing
    - **Usage instructions**: Provides AWS CLI commands and console instructions for applying policies
 
-3. **Multi-region Support**:
+4. **Multi-region Support**:
    - Verify images across different AWS regions
    - Handle region-specific ECR endpoints automatically
    - Support for workflows that use images from multiple regions
@@ -228,6 +247,25 @@ The MCP server includes built-in workflow linting capabilities for validating WD
    → Validate repository policies and permissions
    → Generate compliant policies with GenAHOECRRepoPolicy
    → Ensure images exist in the correct regions
+   ```
+
+7. **ECR Pull Through Cache Analysis**:
+   ```
+   User: "Can I use my ECR pull through cache with HealthOmics?"
+   → Use CheckAHOECRPullThroughCache to analyze compatibility
+   → Check registry permissions and repository creation templates
+   → Get recommendations for fixing incompatible configurations
+   → Identify which prefixes are ready for HealthOmics workflows
+   ```
+
+8. **Service Role ECR Permissions Analysis**:
+   ```
+   User: "Does my HealthOmics service role have the right ECR permissions?"
+   → Use AnalyzeAHOServiceRoleECRPermissions to analyze the role
+   → Check for required ECR permissions (BatchGetImage, GetDownloadUrlForLayer, BatchCheckLayerAvailability)
+   → Verify trust policy allows omics.amazonaws.com to assume the role
+   → Get specific recommendations for fixing missing permissions
+   → Suggest AWS managed policies or custom policy statements
    ```
 
 ### Important Considerations
@@ -329,7 +367,10 @@ The following IAM permissions are required:
                 "logs:GetLogEvents",
                 "ecr:DescribeRepositories",
                 "ecr:DescribeImages",
-                "ecr:GetRepositoryPolicy"
+                "ecr:GetRepositoryPolicy",
+                "ecr:DescribePullThroughCacheRules",
+                "ecr:GetRegistryPolicy",
+                "ecr:DescribeRepositoryCreationTemplates"
             ],
             "Resource": "*"
         },

@@ -35,6 +35,8 @@ from awslabs.aws_healthomics_mcp_server.tools.workflow_execution import (
     start_run,
 )
 from awslabs.aws_healthomics_mcp_server.tools.workflow_image_management import (
+    analyze_service_role_ecr_permissions,
+    check_ecr_pull_through_cache_for_omics,
     verify_container_images_for_omics,
 )
 from awslabs.aws_healthomics_mcp_server.tools.workflow_linting import (
@@ -70,6 +72,8 @@ This MCP server provides tools for creating, managing, and analyzing genomic wor
 
 ### Workflow Image Management
 - **VerifyAHOContainerImages**: Verify that container images are accessible to AWS HealthOmics by checking ECR repository existence and policies
+- **CheckAHOECRPullThroughCache**: Check which ECR pull through caches can be used by HealthOmics by performing static analysis of registry policies and repository creation templates
+- **AnalyzeAHOServiceRoleECRPermissions**: Analyze a service role for required ECR permissions for HealthOmics workflows using container images
 
 ### Workflow Execution
 - **StartAHORun**: Start a workflow run
@@ -116,6 +120,8 @@ mcp.tool(name='GetAHOWorkflow')(get_workflow)
 mcp.tool(name='CreateAHOWorkflowVersion')(create_workflow_version)
 mcp.tool(name='ListAHOWorkflowVersions')(list_workflow_versions)
 mcp.tool(name='VerifyAHOContainerImages')(verify_container_images_for_omics)
+mcp.tool(name='CheckAHOECRPullThroughCache')(check_ecr_pull_through_cache_for_omics)
+mcp.tool(name='AnalyzeAHOServiceRoleECRPermissions')(analyze_service_role_ecr_permissions)
 
 # Register workflow execution tools
 mcp.tool(name='StartAHORun')(start_run)
