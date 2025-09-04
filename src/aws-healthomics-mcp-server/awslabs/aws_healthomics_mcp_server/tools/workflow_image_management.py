@@ -118,11 +118,17 @@ def _check_policy_compliance(
                     policy_compliant = True
                     break
 
-        return {
+        result = {
             'accessible_to_omics': accessible_to_omics,
             'policy_compliant': policy_compliant,
             'has_policy': True,
         }
+
+        # Include the actual policy when there are compliance issues
+        if not policy_compliant:
+            result['current_policy'] = policy_text
+
+        return result
 
     except ecr_client.exceptions.RepositoryPolicyNotFoundException:
         return {'accessible_to_omics': False, 'policy_compliant': False, 'has_policy': False}
@@ -221,6 +227,15 @@ async def verify_container_images_for_omics(
     has the necessary policy to allow the omics.amazonaws.com principal to perform
     required actions: ecr:GetDownloadUrlForLayer, ecr:BatchGetImage, ecr:BatchCheckLayerAvailability.
 
+    IMPORTANT CAVEATS:
+    1. Actual access will be determined at runtime and can be influenced by additional
+       factors that are not checked here, such as Service Control Policies (SCPs),
+       permission boundaries, and other resource-based restrictions.
+    2. The permissions may not be sufficient for cross-account scenarios where additional
+       trust relationships and cross-account policies may be required.
+    3. This verification only checks basic ECR repository policies and does not validate
+       all possible AWS IAM configurations that could affect access.
+
     Args:
         ctx: MCP context for error reporting
         image_uris: List of container image URIs to verify (ECR format: account.dkr.ecr.region.amazonaws.com/repo:tag)
@@ -278,3 +293,363 @@ async def verify_container_images_for_omics(
         'accessible_to_omics': accessible_images,
         'verification_results': results,
     }
+
+
+def _check_registry_policy_compliance(ecr_client, omics_principal: str) -> Dict[str, Any]:
+    """Check if registry policy allows HealthOmics to use pull through cache."""
+    try:
+        policy_response = ecr_client.get_registry_policy()
+        policy_text = policy_response.get('policyText', '{}')
+        policy = json.loads(policy_text)
+
+        required_actions = [
+            'ecr:CreateRepository',
+            'ecr:BatchImportUpstreamImage',
+        ]
+
+        accessible_to_omics = False
+        policy_compliant = False
+
+        for statement in policy.get('Statement', []):
+            if statement.get('Effect', '').upper() != 'ALLOW':
+                continue
+
+            # Normalize principals
+            principals = statement.get('Principal', {})
+            if isinstance(principals, str):
+                principals = {'Service': [principals]}
+            elif isinstance(principals, list):
+                principals = {'Service': principals}
+
+            service_principals = principals.get('Service', [])
+            if isinstance(service_principals, str):
+                service_principals = [service_principals]
+
+            # Check if HealthOmics has access
+            if omics_principal in service_principals or '*' in service_principals:
+                accessible_to_omics = True
+
+                # Check actions
+                actions = statement.get('Action', [])
+                if isinstance(actions, str):
+                    actions = [actions]
+
+                # Check if all required actions are present
+                has_all_actions = all(
+                    action in actions or 'ecr:*' in actions or '*' in actions
+                    for action in required_actions
+                )
+
+                if has_all_actions:
+                    policy_compliant = True
+                    break
+
+        result = {
+            'accessible_to_omics': accessible_to_omics,
+            'policy_compliant': policy_compliant,
+            'has_policy': True,
+            'required_actions': required_actions,
+        }
+
+        # Include the actual policy when there are compliance issues
+        if not policy_compliant:
+            result['current_policy'] = policy_text
+
+        return result
+
+    except ecr_client.exceptions.RegistryPolicyNotFoundException:
+        return {
+            'accessible_to_omics': False,
+            'policy_compliant': False,
+            'has_policy': False,
+            'required_actions': ['ecr:CreateRepository', 'ecr:BatchImportUpstreamImage'],
+        }
+
+
+def _check_repository_creation_template(
+    ecr_client, prefix: str, omics_principal: str
+) -> Dict[str, Any]:
+    """Check if repository creation template exists and has proper policy for HealthOmics."""
+    try:
+        response = ecr_client.describe_repository_creation_templates(prefixes=[prefix])
+        templates = response.get('repositoryCreationTemplates', [])
+
+        if not templates:
+            return {
+                'has_template': False,
+                'template_compliant': False,
+                'errors': [f'No repository creation template found for prefix: {prefix}'],
+            }
+
+        template = templates[0]
+        applied_for = template.get('appliedFor', [])
+
+        # Check if template applies to pull through cache
+        if 'PULL_THROUGH_CACHE' not in applied_for:
+            result = {
+                'has_template': True,
+                'template_compliant': False,
+                'errors': [
+                    f'Repository creation template for prefix {prefix} does not apply to PULL_THROUGH_CACHE'
+                ],
+                'template_details': {
+                    'prefix': template.get('prefix'),
+                    'appliedFor': applied_for,
+                    'encryptionConfiguration': template.get('encryptionConfiguration'),
+                },
+            }
+            # Include repository policy if it exists
+            repository_policy = template.get('repositoryPolicy')
+            if repository_policy:
+                result['current_repository_policy'] = repository_policy
+            return result
+
+        # Check repository policy in template
+        repository_policy = template.get('repositoryPolicy')
+        if not repository_policy:
+            return {
+                'has_template': True,
+                'template_compliant': False,
+                'warnings': [
+                    f'Repository creation template for prefix {prefix} has no repository policy'
+                ],
+                'template_details': {
+                    'prefix': template.get('prefix'),
+                    'appliedFor': applied_for,
+                    'encryptionConfiguration': template.get('encryptionConfiguration'),
+                },
+            }
+
+        # Parse and check the repository policy
+        try:
+            policy = json.loads(repository_policy)
+            required_actions = ['ecr:BatchGetImage', 'ecr:GetDownloadUrlForLayer']
+
+            accessible_to_omics = False
+            policy_compliant = False
+
+            for statement in policy.get('Statement', []):
+                if statement.get('Effect', '').upper() != 'ALLOW':
+                    continue
+
+                # Check principals
+                principals = statement.get('Principal', {})
+                if isinstance(principals, str):
+                    principals = {'Service': [principals]}
+                elif isinstance(principals, list):
+                    principals = {'Service': principals}
+
+                service_principals = principals.get('Service', [])
+                if isinstance(service_principals, str):
+                    service_principals = [service_principals]
+
+                if omics_principal in service_principals or '*' in service_principals:
+                    accessible_to_omics = True
+
+                    # Check actions
+                    actions = statement.get('Action', [])
+                    if isinstance(actions, str):
+                        actions = [actions]
+
+                    has_all_actions = all(
+                        action in actions or 'ecr:*' in actions or '*' in actions
+                        for action in required_actions
+                    )
+
+                    if has_all_actions:
+                        policy_compliant = True
+                        break
+
+            result = {
+                'has_template': True,
+                'template_compliant': policy_compliant,
+                'accessible_to_omics': accessible_to_omics,
+                'template_details': {
+                    'prefix': template.get('prefix'),
+                    'appliedFor': applied_for,
+                    'encryptionConfiguration': template.get('encryptionConfiguration'),
+                },
+            }
+
+            # Include the actual policy when there are compliance issues
+            if not policy_compliant:
+                result['current_repository_policy'] = repository_policy
+
+            return result
+
+        except json.JSONDecodeError:
+            return {
+                'has_template': True,
+                'template_compliant': False,
+                'errors': [f'Invalid JSON in repository policy for template {prefix}'],
+                'current_repository_policy': repository_policy,
+                'template_details': {
+                    'prefix': template.get('prefix'),
+                    'appliedFor': applied_for,
+                    'encryptionConfiguration': template.get('encryptionConfiguration'),
+                },
+            }
+
+    except Exception as e:
+        logger.error(f'Error checking repository creation template for {prefix}: {str(e)}')
+        return {
+            'has_template': False,
+            'template_compliant': False,
+            'errors': [f'Error checking repository creation template for {prefix}: {str(e)}'],
+        }
+
+
+async def check_ecr_pull_through_cache_for_omics(
+    ctx: Context,
+    region: Optional[str] = Field(
+        None,
+        description='AWS region to check (defaults to current region)',
+    ),
+) -> Dict[str, Any]:
+    """Check which ECR pull through caches can be used by HealthOmics.
+
+    This function examines ECR pull through cache rules and validates that they have
+    the necessary registry permissions and repository creation templates to work with
+    AWS HealthOmics workflows.
+
+    For each pull through cache prefix, it checks:
+    1. Registry permissions policy allows HealthOmics to create repositories and pull images
+    2. Repository creation template exists and applies to pull through cache
+    3. Repository creation template has proper policy for HealthOmics access
+
+    IMPORTANT CAVEATS:
+    1. Actual access will be determined at runtime and can be influenced by additional
+       factors that are not checked here, such as Service Control Policies (SCPs),
+       permission boundaries, and other resource-based restrictions.
+    2. The permissions may not be sufficient for cross-account scenarios where additional
+       trust relationships and cross-account policies may be required.
+    3. This verification only checks basic ECR registry and repository creation template
+       policies and does not validate all possible AWS IAM configurations that could
+       affect access.
+
+    Args:
+        ctx: MCP context for error reporting
+        region: AWS region to check (defaults to current region)
+
+    Returns:
+        Dictionary containing analysis of pull through cache compatibility with HealthOmics
+    """
+    try:
+        # Create ECR client for the specified region
+        if region:
+            ecr_client = _create_ecr_client_for_region(region)
+        else:
+            ecr_client = create_aws_client('ecr')
+            region = ecr_client.meta.region_name
+
+        omics_principal = 'omics.amazonaws.com'
+
+        # Get pull through cache rules
+        try:
+            ptc_response = ecr_client.describe_pull_through_cache_rules()
+            ptc_rules = ptc_response.get('pullThroughCacheRules', [])
+        except Exception as e:
+            error_message = f'Error retrieving pull through cache rules: {str(e)}'
+            logger.error(error_message)
+            await ctx.error(error_message)
+            raise
+
+        if not ptc_rules:
+            return {
+                'region': region,
+                'pull_through_cache_rules': [],
+                'registry_policy_compliant': False,
+                'compatible_prefixes': [],
+                'total_rules': 0,
+                'compatible_rules': 0,
+                'message': 'No pull through cache rules found in this region',
+            }
+
+        # Check registry policy compliance
+        registry_policy_check = _check_registry_policy_compliance(ecr_client, omics_principal)
+
+        # Analyze each pull through cache rule
+        rule_analysis = {}
+        compatible_prefixes = []
+
+        for rule in ptc_rules:
+            prefix = rule.get('ecrRepositoryPrefix', '')
+            upstream_registry_url = rule.get('upstreamRegistryUrl', '')
+
+            # Check repository creation template
+            template_check = _check_repository_creation_template(
+                ecr_client, prefix, omics_principal
+            )
+
+            # Determine if this prefix is compatible with HealthOmics
+            is_compatible = (
+                registry_policy_check['policy_compliant'] and template_check['template_compliant']
+            )
+
+            if is_compatible:
+                compatible_prefixes.append(prefix)
+
+            rule_analysis[prefix] = {
+                'upstream_registry_url': upstream_registry_url,
+                'registry_id': rule.get('registryId'),
+                'creation_time': rule.get('createdAt'),
+                'is_compatible_with_omics': is_compatible,
+                'template_check': template_check,
+                'issues': [],
+                'recommendations': [],
+            }
+
+            # Add issues and recommendations
+            if not registry_policy_check['policy_compliant']:
+                rule_analysis[prefix]['issues'].append(
+                    'Registry policy does not allow HealthOmics to create repositories and pull images'
+                )
+                rule_analysis[prefix]['recommendations'].append(
+                    f'Add registry policy allowing {omics_principal} to perform: {", ".join(registry_policy_check["required_actions"])}'
+                )
+
+            if not template_check['has_template']:
+                rule_analysis[prefix]['issues'].append(
+                    f'No repository creation template found for prefix {prefix}'
+                )
+                rule_analysis[prefix]['recommendations'].append(
+                    f'Create repository creation template for prefix {prefix} that applies to PULL_THROUGH_CACHE'
+                )
+            elif not template_check['template_compliant']:
+                rule_analysis[prefix]['issues'].append(
+                    'Repository creation template does not allow HealthOmics access'
+                )
+                rule_analysis[prefix]['recommendations'].append(
+                    f'Update repository creation template policy to allow {omics_principal} access'
+                )
+
+        return {
+            'region': region,
+            'pull_through_cache_rules': list(rule_analysis.keys()),
+            'registry_policy_compliant': registry_policy_check['policy_compliant'],
+            'registry_policy_details': registry_policy_check,
+            'compatible_prefixes': compatible_prefixes,
+            'total_rules': len(ptc_rules),
+            'compatible_rules': len(compatible_prefixes),
+            'rule_analysis': rule_analysis,
+            'summary': {
+                'message': f'Found {len(ptc_rules)} pull through cache rules, {len(compatible_prefixes)} compatible with HealthOmics',
+                'next_steps': [
+                    'Use compatible prefixes in your HealthOmics workflow container URIs',
+                    'Fix registry policy and repository creation templates for incompatible prefixes',
+                    'Test container image pulls using the compatible prefixes',
+                ]
+                if compatible_prefixes
+                else [
+                    'Configure registry policy to allow HealthOmics access',
+                    'Create repository creation templates for your pull through cache prefixes',
+                    'Ensure templates apply to PULL_THROUGH_CACHE and allow HealthOmics access',
+                ],
+            },
+        }
+
+    except Exception as e:
+        error_message = f'Error checking ECR pull through cache compatibility: {str(e)}'
+        logger.error(error_message)
+        await ctx.error(error_message)
+        raise

@@ -19,10 +19,13 @@ import pytest
 from awslabs.aws_healthomics_mcp_server.tools.workflow_image_management import (
     _check_image_exists,
     _check_policy_compliance,
+    _check_registry_policy_compliance,
+    _check_repository_creation_template,
     _check_repository_exists,
     _create_ecr_client_for_region,
     _parse_ecr_uri,
     _verify_single_image,
+    check_ecr_pull_through_cache_for_omics,
     verify_container_images_for_omics,
 )
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -327,6 +330,107 @@ class TestPolicyCompliance:
         assert result['policy_compliant'] is False
         assert result['has_policy'] is False
 
+    def test_policy_compliance_includes_policy_when_non_compliant(self):
+        """Test that current policy is included when policy is not compliant."""
+        policy_document = {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Effect': 'Allow',
+                    'Principal': {'Service': 'lambda.amazonaws.com'},  # Wrong service
+                    'Action': [
+                        'ecr:BatchGetImage',
+                        'ecr:GetDownloadUrlForLayer',
+                    ],
+                }
+            ],
+        }
+
+        policy_text = json.dumps(policy_document)
+        mock_client = MagicMock()
+        mock_client.get_repository_policy.return_value = {'policyText': policy_text}
+
+        required_actions = [
+            'ecr:BatchGetImage',
+            'ecr:GetDownloadUrlForLayer',
+        ]
+
+        result = _check_policy_compliance(
+            mock_client, 'my-repo', required_actions, 'omics.amazonaws.com'
+        )
+
+        assert result['accessible_to_omics'] is False
+        assert result['policy_compliant'] is False
+        assert result['has_policy'] is True
+        assert 'current_policy' in result
+        assert result['current_policy'] == policy_text
+
+    def test_policy_compliance_includes_policy_when_missing_actions(self):
+        """Test that current policy is included when required actions are missing."""
+        policy_document = {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Effect': 'Allow',
+                    'Principal': {'Service': 'omics.amazonaws.com'},
+                    'Action': ['ecr:BatchGetImage'],  # Missing GetDownloadUrlForLayer
+                }
+            ],
+        }
+
+        policy_text = json.dumps(policy_document)
+        mock_client = MagicMock()
+        mock_client.get_repository_policy.return_value = {'policyText': policy_text}
+
+        required_actions = [
+            'ecr:BatchGetImage',
+            'ecr:GetDownloadUrlForLayer',
+        ]
+
+        result = _check_policy_compliance(
+            mock_client, 'my-repo', required_actions, 'omics.amazonaws.com'
+        )
+
+        assert result['accessible_to_omics'] is True
+        assert result['policy_compliant'] is False
+        assert result['has_policy'] is True
+        assert 'current_policy' in result
+        assert result['current_policy'] == policy_text
+
+    def test_policy_compliance_excludes_policy_when_compliant(self):
+        """Test that current policy is not included when policy is compliant."""
+        policy_document = {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Effect': 'Allow',
+                    'Principal': {'Service': 'omics.amazonaws.com'},
+                    'Action': [
+                        'ecr:BatchGetImage',
+                        'ecr:GetDownloadUrlForLayer',
+                    ],
+                }
+            ],
+        }
+
+        policy_text = json.dumps(policy_document)
+        mock_client = MagicMock()
+        mock_client.get_repository_policy.return_value = {'policyText': policy_text}
+
+        required_actions = [
+            'ecr:BatchGetImage',
+            'ecr:GetDownloadUrlForLayer',
+        ]
+
+        result = _check_policy_compliance(
+            mock_client, 'my-repo', required_actions, 'omics.amazonaws.com'
+        )
+
+        assert result['accessible_to_omics'] is True
+        assert result['policy_compliant'] is True
+        assert result['has_policy'] is True
+        assert 'current_policy' not in result
+
 
 class TestVerifySingleImage:
     """Test single image verification."""
@@ -577,3 +681,555 @@ class TestVerifyContainerImagesForOmics:
             assert result['verification_results']['bad-uri']['exists'] is False
             assert result['verification_results']['no-policy-uri']['exists'] is True
             assert len(result['verification_results']['no-policy-uri']['warnings']) == 1
+
+
+class TestRegistryPolicyCompliance:
+    """Test registry policy compliance checking for pull through cache."""
+
+    def test_registry_policy_compliance_success(self):
+        """Test successful registry policy compliance check."""
+        policy_document = {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Effect': 'Allow',
+                    'Principal': {'Service': 'omics.amazonaws.com'},
+                    'Action': [
+                        'ecr:CreateRepository',
+                        'ecr:BatchImportUpstreamImage',
+                        'ecr:BatchGetImage',
+                        'ecr:GetDownloadUrlForLayer',
+                    ],
+                }
+            ],
+        }
+
+        mock_client = MagicMock()
+        mock_client.get_registry_policy.return_value = {'policyText': json.dumps(policy_document)}
+
+        result = _check_registry_policy_compliance(mock_client, 'omics.amazonaws.com')
+
+        assert result['accessible_to_omics'] is True
+        assert result['policy_compliant'] is True
+        assert result['has_policy'] is True
+
+    def test_registry_policy_compliance_no_policy(self):
+        """Test registry policy compliance when no policy exists."""
+        mock_client = MagicMock()
+        mock_client.exceptions.RegistryPolicyNotFoundException = Exception
+        mock_client.get_registry_policy.side_effect = Exception()
+
+        result = _check_registry_policy_compliance(mock_client, 'omics.amazonaws.com')
+
+        assert result['accessible_to_omics'] is False
+        assert result['policy_compliant'] is False
+        assert result['has_policy'] is False
+
+    def test_registry_policy_compliance_includes_policy_when_non_compliant(self):
+        """Test that current policy is included when registry policy is not compliant."""
+        policy_document = {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Effect': 'Allow',
+                    'Principal': {'Service': 'lambda.amazonaws.com'},  # Wrong service
+                    'Action': [
+                        'ecr:CreateRepository',
+                        'ecr:BatchImportUpstreamImage',
+                    ],
+                }
+            ],
+        }
+
+        policy_text = json.dumps(policy_document)
+        mock_client = MagicMock()
+        mock_client.get_registry_policy.return_value = {'policyText': policy_text}
+
+        result = _check_registry_policy_compliance(mock_client, 'omics.amazonaws.com')
+
+        assert result['accessible_to_omics'] is False
+        assert result['policy_compliant'] is False
+        assert result['has_policy'] is True
+        assert 'current_policy' in result
+        assert result['current_policy'] == policy_text
+
+    def test_registry_policy_compliance_includes_policy_when_missing_actions(self):
+        """Test that current policy is included when required actions are missing."""
+        policy_document = {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Effect': 'Allow',
+                    'Principal': {'Service': 'omics.amazonaws.com'},
+                    'Action': ['ecr:CreateRepository'],  # Missing BatchImportUpstreamImage
+                }
+            ],
+        }
+
+        policy_text = json.dumps(policy_document)
+        mock_client = MagicMock()
+        mock_client.get_registry_policy.return_value = {'policyText': policy_text}
+
+        result = _check_registry_policy_compliance(mock_client, 'omics.amazonaws.com')
+
+        assert result['accessible_to_omics'] is True
+        assert result['policy_compliant'] is False
+        assert result['has_policy'] is True
+        assert 'current_policy' in result
+        assert result['current_policy'] == policy_text
+
+    def test_registry_policy_compliance_excludes_policy_when_compliant(self):
+        """Test that current policy is not included when registry policy is compliant."""
+        policy_document = {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Effect': 'Allow',
+                    'Principal': {'Service': 'omics.amazonaws.com'},
+                    'Action': [
+                        'ecr:CreateRepository',
+                        'ecr:BatchImportUpstreamImage',
+                    ],
+                }
+            ],
+        }
+
+        policy_text = json.dumps(policy_document)
+        mock_client = MagicMock()
+        mock_client.get_registry_policy.return_value = {'policyText': policy_text}
+
+        result = _check_registry_policy_compliance(mock_client, 'omics.amazonaws.com')
+
+        assert result['accessible_to_omics'] is True
+        assert result['policy_compliant'] is True
+        assert result['has_policy'] is True
+        assert 'current_policy' not in result
+
+
+class TestRepositoryCreationTemplate:
+    """Test repository creation template checking."""
+
+    def test_repository_creation_template_success(self):
+        """Test successful repository creation template check."""
+        template_data = {
+            'repositoryCreationTemplates': [
+                {
+                    'prefix': 'docker-hub',
+                    'appliedFor': ['PULL_THROUGH_CACHE'],
+                    'repositoryPolicy': json.dumps(
+                        {
+                            'Version': '2012-10-17',
+                            'Statement': [
+                                {
+                                    'Effect': 'Allow',
+                                    'Principal': {'Service': 'omics.amazonaws.com'},
+                                    'Action': [
+                                        'ecr:BatchGetImage',
+                                        'ecr:GetDownloadUrlForLayer',
+                                    ],
+                                }
+                            ],
+                        }
+                    ),
+                    'encryptionConfiguration': {'encryptionType': 'AES256'},
+                }
+            ]
+        }
+
+        mock_client = MagicMock()
+        mock_client.describe_repository_creation_templates.return_value = template_data
+
+        result = _check_repository_creation_template(
+            mock_client, 'docker-hub', 'omics.amazonaws.com'
+        )
+
+        assert result['has_template'] is True
+        assert result['template_compliant'] is True
+        assert result['accessible_to_omics'] is True
+
+    def test_repository_creation_template_no_template(self):
+        """Test repository creation template when no template exists."""
+        mock_client = MagicMock()
+        mock_client.describe_repository_creation_templates.return_value = {
+            'repositoryCreationTemplates': []
+        }
+
+        result = _check_repository_creation_template(
+            mock_client, 'nonexistent', 'omics.amazonaws.com'
+        )
+
+        assert result['has_template'] is False
+        assert result['template_compliant'] is False
+        assert 'No repository creation template found' in result['errors'][0]
+
+    def test_repository_creation_template_wrong_applied_for(self):
+        """Test repository creation template with wrong appliedFor."""
+        template_data = {
+            'repositoryCreationTemplates': [
+                {
+                    'prefix': 'docker-hub',
+                    'appliedFor': ['REPLICATION'],  # Not PULL_THROUGH_CACHE
+                    'repositoryPolicy': '{}',
+                }
+            ]
+        }
+
+        mock_client = MagicMock()
+        mock_client.describe_repository_creation_templates.return_value = template_data
+
+        result = _check_repository_creation_template(
+            mock_client, 'docker-hub', 'omics.amazonaws.com'
+        )
+
+        assert result['has_template'] is True
+        assert result['template_compliant'] is False
+        assert 'does not apply to PULL_THROUGH_CACHE' in result['errors'][0]
+
+    def test_repository_creation_template_includes_policy_when_non_compliant(self):
+        """Test that current repository policy is included when template policy is not compliant."""
+        non_compliant_policy = {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Effect': 'Allow',
+                    'Principal': {'Service': 'lambda.amazonaws.com'},  # Wrong service
+                    'Action': [
+                        'ecr:BatchGetImage',
+                        'ecr:GetDownloadUrlForLayer',
+                    ],
+                }
+            ],
+        }
+
+        policy_text = json.dumps(non_compliant_policy)
+        template_data = {
+            'repositoryCreationTemplates': [
+                {
+                    'prefix': 'docker-hub',
+                    'appliedFor': ['PULL_THROUGH_CACHE'],
+                    'repositoryPolicy': policy_text,
+                    'encryptionConfiguration': {'encryptionType': 'AES256'},
+                }
+            ]
+        }
+
+        mock_client = MagicMock()
+        mock_client.describe_repository_creation_templates.return_value = template_data
+
+        result = _check_repository_creation_template(
+            mock_client, 'docker-hub', 'omics.amazonaws.com'
+        )
+
+        assert result['has_template'] is True
+        assert result['template_compliant'] is False
+        assert result['accessible_to_omics'] is False
+        assert 'current_repository_policy' in result
+        assert result['current_repository_policy'] == policy_text
+
+    def test_repository_creation_template_includes_policy_when_missing_actions(self):
+        """Test that current repository policy is included when required actions are missing."""
+        incomplete_policy = {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Effect': 'Allow',
+                    'Principal': {'Service': 'omics.amazonaws.com'},
+                    'Action': ['ecr:BatchGetImage'],  # Missing GetDownloadUrlForLayer
+                }
+            ],
+        }
+
+        policy_text = json.dumps(incomplete_policy)
+        template_data = {
+            'repositoryCreationTemplates': [
+                {
+                    'prefix': 'docker-hub',
+                    'appliedFor': ['PULL_THROUGH_CACHE'],
+                    'repositoryPolicy': policy_text,
+                    'encryptionConfiguration': {'encryptionType': 'AES256'},
+                }
+            ]
+        }
+
+        mock_client = MagicMock()
+        mock_client.describe_repository_creation_templates.return_value = template_data
+
+        result = _check_repository_creation_template(
+            mock_client, 'docker-hub', 'omics.amazonaws.com'
+        )
+
+        assert result['has_template'] is True
+        assert result['template_compliant'] is False
+        assert result['accessible_to_omics'] is True
+        assert 'current_repository_policy' in result
+        assert result['current_repository_policy'] == policy_text
+
+    def test_repository_creation_template_excludes_policy_when_compliant(self):
+        """Test that current repository policy is not included when template policy is compliant."""
+        compliant_policy = {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Effect': 'Allow',
+                    'Principal': {'Service': 'omics.amazonaws.com'},
+                    'Action': [
+                        'ecr:BatchGetImage',
+                        'ecr:GetDownloadUrlForLayer',
+                    ],
+                }
+            ],
+        }
+
+        policy_text = json.dumps(compliant_policy)
+        template_data = {
+            'repositoryCreationTemplates': [
+                {
+                    'prefix': 'docker-hub',
+                    'appliedFor': ['PULL_THROUGH_CACHE'],
+                    'repositoryPolicy': policy_text,
+                    'encryptionConfiguration': {'encryptionType': 'AES256'},
+                }
+            ]
+        }
+
+        mock_client = MagicMock()
+        mock_client.describe_repository_creation_templates.return_value = template_data
+
+        result = _check_repository_creation_template(
+            mock_client, 'docker-hub', 'omics.amazonaws.com'
+        )
+
+        assert result['has_template'] is True
+        assert result['template_compliant'] is True
+        assert result['accessible_to_omics'] is True
+        assert 'current_repository_policy' not in result
+
+    def test_repository_creation_template_includes_policy_when_wrong_applied_for(self):
+        """Test that current repository policy is included when appliedFor is wrong."""
+        policy_text = json.dumps(
+            {
+                'Version': '2012-10-17',
+                'Statement': [
+                    {
+                        'Effect': 'Allow',
+                        'Principal': {'Service': 'omics.amazonaws.com'},
+                        'Action': [
+                            'ecr:BatchGetImage',
+                            'ecr:GetDownloadUrlForLayer',
+                        ],
+                    }
+                ],
+            }
+        )
+
+        template_data = {
+            'repositoryCreationTemplates': [
+                {
+                    'prefix': 'docker-hub',
+                    'appliedFor': ['REPLICATION'],  # Wrong appliedFor
+                    'repositoryPolicy': policy_text,
+                    'encryptionConfiguration': {'encryptionType': 'AES256'},
+                }
+            ]
+        }
+
+        mock_client = MagicMock()
+        mock_client.describe_repository_creation_templates.return_value = template_data
+
+        result = _check_repository_creation_template(
+            mock_client, 'docker-hub', 'omics.amazonaws.com'
+        )
+
+        assert result['has_template'] is True
+        assert result['template_compliant'] is False
+        assert 'does not apply to PULL_THROUGH_CACHE' in result['errors'][0]
+        assert 'current_repository_policy' in result
+        assert result['current_repository_policy'] == policy_text
+
+    def test_repository_creation_template_includes_policy_when_invalid_json(self):
+        """Test that current repository policy is included when JSON is invalid."""
+        invalid_policy_text = '{"Version": "2012-10-17", "Statement": [invalid json'
+
+        template_data = {
+            'repositoryCreationTemplates': [
+                {
+                    'prefix': 'docker-hub',
+                    'appliedFor': ['PULL_THROUGH_CACHE'],
+                    'repositoryPolicy': invalid_policy_text,
+                    'encryptionConfiguration': {'encryptionType': 'AES256'},
+                }
+            ]
+        }
+
+        mock_client = MagicMock()
+        mock_client.describe_repository_creation_templates.return_value = template_data
+
+        result = _check_repository_creation_template(
+            mock_client, 'docker-hub', 'omics.amazonaws.com'
+        )
+
+        assert result['has_template'] is True
+        assert result['template_compliant'] is False
+        assert 'Invalid JSON in repository policy' in result['errors'][0]
+        assert 'current_repository_policy' in result
+        assert result['current_repository_policy'] == invalid_policy_text
+
+
+class TestCheckEcrPullThroughCacheForOmics:
+    """Test ECR pull through cache compatibility checking."""
+
+    @pytest.mark.asyncio
+    async def test_check_ecr_pull_through_cache_success(self):
+        """Test successful ECR pull through cache check."""
+        mock_ctx = AsyncMock()
+
+        # Mock pull through cache rules
+        ptc_rules = [
+            {
+                'ecrRepositoryPrefix': 'docker-hub',
+                'upstreamRegistryUrl': 'registry-1.docker.io',
+                'registryId': '123456789012',
+                'createdAt': '2023-01-01T00:00:00Z',
+            }
+        ]
+
+        with (
+            patch(
+                'awslabs.aws_healthomics_mcp_server.tools.workflow_image_management.create_aws_client'
+            ) as mock_create_client,
+            patch(
+                'awslabs.aws_healthomics_mcp_server.tools.workflow_image_management._check_registry_policy_compliance'
+            ) as mock_registry_check,
+            patch(
+                'awslabs.aws_healthomics_mcp_server.tools.workflow_image_management._check_repository_creation_template'
+            ) as mock_template_check,
+        ):
+            mock_client = MagicMock()
+            mock_client.meta.region_name = 'us-east-1'
+            mock_client.describe_pull_through_cache_rules.return_value = {
+                'pullThroughCacheRules': ptc_rules
+            }
+            mock_create_client.return_value = mock_client
+
+            mock_registry_check.return_value = {
+                'accessible_to_omics': True,
+                'policy_compliant': True,
+                'has_policy': True,
+                'required_actions': ['ecr:CreateRepository', 'ecr:BatchImportUpstreamImage'],
+            }
+
+            mock_template_check.return_value = {
+                'has_template': True,
+                'template_compliant': True,
+                'accessible_to_omics': True,
+                'template_details': {
+                    'prefix': 'docker-hub',
+                    'appliedFor': ['PULL_THROUGH_CACHE'],
+                },
+            }
+
+            result = await check_ecr_pull_through_cache_for_omics(mock_ctx, region='us-east-1')
+
+            assert result['region'] == 'us-east-1'
+            assert result['total_rules'] == 1
+            assert result['compatible_rules'] == 1
+            assert 'docker-hub' in result['compatible_prefixes']
+            assert result['registry_policy_compliant'] is True
+
+    @pytest.mark.asyncio
+    async def test_check_ecr_pull_through_cache_no_rules(self):
+        """Test ECR pull through cache check with no rules."""
+        mock_ctx = AsyncMock()
+
+        with patch(
+            'awslabs.aws_healthomics_mcp_server.tools.workflow_image_management.create_aws_client'
+        ) as mock_create_client:
+            mock_client = MagicMock()
+            mock_client.meta.region_name = 'us-east-1'
+            mock_client.describe_pull_through_cache_rules.return_value = {
+                'pullThroughCacheRules': []
+            }
+            mock_create_client.return_value = mock_client
+
+            result = await check_ecr_pull_through_cache_for_omics(mock_ctx, region='us-east-1')
+
+            assert result['total_rules'] == 0
+            assert result['compatible_rules'] == 0
+            assert result['message'] == 'No pull through cache rules found in this region'
+
+    @pytest.mark.asyncio
+    async def test_check_ecr_pull_through_cache_incompatible(self):
+        """Test ECR pull through cache check with incompatible rules."""
+        mock_ctx = AsyncMock()
+
+        ptc_rules = [
+            {
+                'ecrRepositoryPrefix': 'docker-hub',
+                'upstreamRegistryUrl': 'registry-1.docker.io',
+                'registryId': '123456789012',
+            }
+        ]
+
+        with (
+            patch(
+                'awslabs.aws_healthomics_mcp_server.tools.workflow_image_management.create_aws_client'
+            ) as mock_create_client,
+            patch(
+                'awslabs.aws_healthomics_mcp_server.tools.workflow_image_management._check_registry_policy_compliance'
+            ) as mock_registry_check,
+            patch(
+                'awslabs.aws_healthomics_mcp_server.tools.workflow_image_management._check_repository_creation_template'
+            ) as mock_template_check,
+        ):
+            mock_client = MagicMock()
+            mock_client.meta.region_name = 'us-east-1'
+            mock_client.describe_pull_through_cache_rules.return_value = {
+                'pullThroughCacheRules': ptc_rules
+            }
+            mock_create_client.return_value = mock_client
+
+            # Registry policy not compliant
+            mock_registry_check.return_value = {
+                'accessible_to_omics': False,
+                'policy_compliant': False,
+                'has_policy': False,
+                'required_actions': ['ecr:CreateRepository'],
+            }
+
+            # Template not compliant
+            mock_template_check.return_value = {
+                'has_template': False,
+                'template_compliant': False,
+                'errors': ['No template found'],
+            }
+
+            result = await check_ecr_pull_through_cache_for_omics(mock_ctx, region='us-east-1')
+
+            assert result['total_rules'] == 1
+            assert result['compatible_rules'] == 0
+            assert len(result['compatible_prefixes']) == 0
+            assert result['registry_policy_compliant'] is False
+
+            # Check that issues and recommendations are provided
+            rule_analysis = result['rule_analysis']['docker-hub']
+            assert rule_analysis['is_compatible_with_omics'] is False
+            assert len(rule_analysis['issues']) > 0
+            assert len(rule_analysis['recommendations']) > 0
+
+    @pytest.mark.asyncio
+    async def test_check_ecr_pull_through_cache_api_error(self):
+        """Test ECR pull through cache check with API error."""
+        mock_ctx = AsyncMock()
+
+        with patch(
+            'awslabs.aws_healthomics_mcp_server.tools.workflow_image_management._create_ecr_client_for_region'
+        ) as mock_create_client:
+            mock_client = MagicMock()
+            mock_client.describe_pull_through_cache_rules.side_effect = Exception('API Error')
+            mock_create_client.return_value = mock_client
+
+            with pytest.raises(Exception):
+                await check_ecr_pull_through_cache_for_omics(mock_ctx, region='us-east-1')
+
+            # Error should be called twice - once for the specific error, once for the general error
+            assert mock_ctx.error.call_count == 2
