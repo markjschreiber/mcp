@@ -187,9 +187,8 @@ class TestPolicyCompliance:
                     'Effect': 'Allow',
                     'Principal': {'Service': 'omics.amazonaws.com'},
                     'Action': [
-                        'ecr:GetDownloadUrlForLayer',
                         'ecr:BatchGetImage',
-                        'ecr:BatchCheckLayerAvailability',
+                        'ecr:GetDownloadUrlForLayer',
                     ],
                 }
             ],
@@ -201,9 +200,8 @@ class TestPolicyCompliance:
         }
 
         required_actions = [
-            'ecr:GetDownloadUrlForLayer',
             'ecr:BatchGetImage',
-            'ecr:BatchCheckLayerAvailability',
+            'ecr:GetDownloadUrlForLayer',
         ]
 
         result = _check_policy_compliance(
@@ -222,7 +220,7 @@ class TestPolicyCompliance:
                 {
                     'Effect': 'Allow',
                     'Principal': {'Service': 'omics.amazonaws.com'},
-                    'Action': ['ecr:GetDownloadUrlForLayer'],  # Missing other actions
+                    'Action': ['ecr:BatchGetImage'],  # Missing other actions
                 }
             ],
         }
@@ -233,9 +231,8 @@ class TestPolicyCompliance:
         }
 
         required_actions = [
-            'ecr:GetDownloadUrlForLayer',
             'ecr:BatchGetImage',
-            'ecr:BatchCheckLayerAvailability',
+            'ecr:GetDownloadUrlForLayer',
         ]
 
         result = _check_policy_compliance(
@@ -255,9 +252,8 @@ class TestPolicyCompliance:
                     'Effect': 'Allow',
                     'Principal': {'Service': 'lambda.amazonaws.com'},  # Wrong service
                     'Action': [
-                        'ecr:GetDownloadUrlForLayer',
                         'ecr:BatchGetImage',
-                        'ecr:BatchCheckLayerAvailability',
+                        'ecr:GetDownloadUrlForLayer',
                     ],
                 }
             ],
@@ -269,9 +265,8 @@ class TestPolicyCompliance:
         }
 
         required_actions = [
-            'ecr:GetDownloadUrlForLayer',
             'ecr:BatchGetImage',
-            'ecr:BatchCheckLayerAvailability',
+            'ecr:GetDownloadUrlForLayer',
         ]
 
         result = _check_policy_compliance(
@@ -301,9 +296,8 @@ class TestPolicyCompliance:
         }
 
         required_actions = [
-            'ecr:GetDownloadUrlForLayer',
             'ecr:BatchGetImage',
-            'ecr:BatchCheckLayerAvailability',
+            'ecr:GetDownloadUrlForLayer',
         ]
 
         result = _check_policy_compliance(
@@ -321,9 +315,8 @@ class TestPolicyCompliance:
         mock_client.get_repository_policy.side_effect = Exception()
 
         required_actions = [
-            'ecr:GetDownloadUrlForLayer',
             'ecr:BatchGetImage',
-            'ecr:BatchCheckLayerAvailability',
+            'ecr:GetDownloadUrlForLayer',
         ]
 
         result = _check_policy_compliance(
@@ -367,9 +360,8 @@ class TestVerifySingleImage:
 
         uri = '123456789012.dkr.ecr.us-east-1.amazonaws.com/my-repo:latest'
         required_actions = [
-            'ecr:GetDownloadUrlForLayer',
             'ecr:BatchGetImage',
-            'ecr:BatchCheckLayerAvailability',
+            'ecr:GetDownloadUrlForLayer',
         ]
         omics_principal = 'omics.amazonaws.com'
 
@@ -394,7 +386,7 @@ class TestVerifySingleImage:
     def test_verify_single_image_invalid_uri(self):
         """Test single image verification with invalid URI."""
         uri = 'invalid-uri-format'
-        required_actions = ['ecr:GetDownloadUrlForLayer']
+        required_actions = ['ecr:BatchGetImage']
         omics_principal = 'omics.amazonaws.com'
 
         result = _verify_single_image(uri, required_actions, omics_principal)
@@ -414,7 +406,7 @@ class TestVerifySingleImage:
         mock_create_client.side_effect = Exception('Client creation failed')
 
         uri = '123456789012.dkr.ecr.us-east-1.amazonaws.com/my-repo:latest'
-        required_actions = ['ecr:GetDownloadUrlForLayer']
+        required_actions = ['ecr:BatchGetImage']
         omics_principal = 'omics.amazonaws.com'
 
         result = _verify_single_image(uri, required_actions, omics_principal)
@@ -436,7 +428,7 @@ class TestVerifySingleImage:
         mock_repo_exists.return_value = False
 
         uri = '123456789012.dkr.ecr.us-east-1.amazonaws.com/nonexistent-repo:latest'
-        required_actions = ['ecr:GetDownloadUrlForLayer']
+        required_actions = ['ecr:BatchGetImage']
         omics_principal = 'omics.amazonaws.com'
 
         result = _verify_single_image(uri, required_actions, omics_principal)

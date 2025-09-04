@@ -241,9 +241,8 @@ async def verify_container_images_for_omics(
         raise ValueError(error_message)
 
     required_actions = [
-        'ecr:GetDownloadUrlForLayer',
         'ecr:BatchGetImage',
-        'ecr:BatchCheckLayerAvailability',
+        'ecr:GetDownloadUrlForLayer',
     ]
     omics_principal = 'omics.amazonaws.com'
 
