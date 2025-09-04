@@ -15,6 +15,7 @@
 """awslabs aws-healthomics MCP Server implementation."""
 
 from awslabs.aws_healthomics_mcp_server.tools.helper_tools import (
+    generate_ecr_repository_policy_for_omics,
     get_supported_regions,
     package_workflow,
 )
@@ -32,6 +33,9 @@ from awslabs.aws_healthomics_mcp_server.tools.workflow_execution import (
     list_run_tasks,
     list_runs,
     start_run,
+)
+from awslabs.aws_healthomics_mcp_server.tools.workflow_image_management import (
+    verify_container_images_for_omics,
 )
 from awslabs.aws_healthomics_mcp_server.tools.workflow_linting import (
     lint_workflow_bundle,
@@ -64,6 +68,9 @@ This MCP server provides tools for creating, managing, and analyzing genomic wor
 - **CreateAHOWorkflowVersion**: Create a new version of an existing workflow
 - **ListAHOWorkflowVersions**: List versions of a workflow
 
+### Workflow Image Management
+- **VerifyAHOContainerImages**: Verify that container images are accessible to AWS HealthOmics by checking ECR repository existence and policies
+
 ### Workflow Execution
 - **StartAHORun**: Start a workflow run
 - **ListAHORuns**: List workflow runs
@@ -88,6 +95,7 @@ This MCP server provides tools for creating, managing, and analyzing genomic wor
 ### Helper Tools
 - **PackageAHOWorkflow**: Package workflow definition files into a base64-encoded ZIP
 - **GetAHOSupportedRegions**: Get the list of AWS regions where HealthOmics is available
+- **GenAHOECRRepoPolicy**: Generate an ECR repository policy that allows AWS HealthOmics access
 
 ## Service Availability
 AWS HealthOmics is available in select AWS regions. Use the GetAHOSupportedRegions tool to get the current list of supported regions.
@@ -107,6 +115,7 @@ mcp.tool(name='CreateAHOWorkflow')(create_workflow)
 mcp.tool(name='GetAHOWorkflow')(get_workflow)
 mcp.tool(name='CreateAHOWorkflowVersion')(create_workflow_version)
 mcp.tool(name='ListAHOWorkflowVersions')(list_workflow_versions)
+mcp.tool(name='VerifyAHOContainerImages')(verify_container_images_for_omics)
 
 # Register workflow execution tools
 mcp.tool(name='StartAHORun')(start_run)
@@ -132,6 +141,7 @@ mcp.tool(name='LintAHOWorkflowBundle')(lint_workflow_bundle)
 # Register helper tools
 mcp.tool(name='PackageAHOWorkflow')(package_workflow)
 mcp.tool(name='GetAHOSupportedRegions')(get_supported_regions)
+mcp.tool(name='GenAHOECRRepoPolicy')(generate_ecr_repository_policy_for_omics)
 
 
 def main():

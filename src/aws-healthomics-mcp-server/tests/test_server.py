@@ -34,6 +34,7 @@ def test_server_has_required_tools():
         'GetAHOWorkflow',
         'CreateAHOWorkflowVersion',
         'ListAHOWorkflowVersions',
+        'VerifyAHOContainerImages',
         'StartAHORun',
         'ListAHORuns',
         'GetAHORun',
@@ -47,6 +48,7 @@ def test_server_has_required_tools():
         'DiagnoseAHORunFailure',
         'PackageAHOWorkflow',
         'GetAHOSupportedRegions',
+        'GenAHOECRRepoPolicy',
     ]
 
     # Act

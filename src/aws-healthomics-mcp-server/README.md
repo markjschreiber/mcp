@@ -15,6 +15,7 @@ This MCP server provides tools for:
 - **Lint workflow definitions**: Validate WDL and CWL workflows using industry-standard linting tools
 - **Version management**: Create and manage workflow versions with different configurations
 - **Package workflows**: Bundle workflow definitions into deployable packages
+- **Container image verification**: Verify that container images are accessible to AWS HealthOmics
 
 ### 🚀 Workflow Execution
 - **Start and monitor runs**: Execute workflows with custom parameters and monitor progress
@@ -42,6 +43,10 @@ This MCP server provides tools for:
 7. **LintAHOWorkflowBundle** - Lint multi-file WDL or CWL workflow bundles with import/dependency support
 8. **PackageAHOWorkflow** - Package workflow files into base64-encoded ZIP format
 
+### Workflow Image Management Tools
+
+1. **VerifyAHOContainerImages** - Verify that container images are accessible to AWS HealthOmics by checking ECR repository existence and policies
+
 ### Workflow Execution Tools
 
 1. **StartAHORun** - Start workflow runs with custom parameters and resource configuration
@@ -58,6 +63,10 @@ This MCP server provides tools for:
 4. **GetAHORunEngineLogs** - Retrieve workflow engine logs (STDOUT/STDERR) for debugging
 5. **GetAHORunManifestLogs** - Access run manifest logs with runtime information and metrics
 6. **GetAHOTaskLogs** - Get task-specific logs for debugging individual workflow steps
+
+### Helper Tools
+
+1. **GenAHOECRRepoPolicy** - Generate an ECR repository policy that allows AWS HealthOmics access
 
 ### Region Management Tools
 
@@ -122,6 +131,32 @@ When workflows fail, follow this diagnostic approach:
    - Review task resource utilization patterns
    - Optimize workflow parameters based on analysis results
 
+### Container Image Management
+
+AWS HealthOmics workflows often use container images stored in Amazon ECR. The MCP server provides tools to verify that container images are properly configured for HealthOmics access:
+
+1. **Container Image Verification**:
+   - **VerifyAHOContainerImages**: Check if container images exist in ECR and are accessible to HealthOmics
+   - **Repository existence**: Verify that ECR repositories exist in the specified regions
+   - **Image availability**: Confirm that specific image tags are available
+   - **Policy compliance**: Ensure repository policies allow the `omics.amazonaws.com` service principal to access images
+   - **Required permissions**: Validate that repositories grant the necessary ECR permissions:
+     - `ecr:GetDownloadUrlForLayer`
+     - `ecr:BatchGetImage`
+     - `ecr:BatchCheckLayerAvailability`
+
+2. **ECR Policy Generation**:
+   - **GenAHOECRRepoPolicy**: Generate compliant ECR repository policies for HealthOmics access
+   - **Service principal access**: Automatically includes `omics.amazonaws.com` as a trusted service
+   - **Additional principals**: Support for adding custom AWS accounts, IAM roles, or other services
+   - **Cross-account access**: Optional support for cross-account image sharing
+   - **Usage instructions**: Provides AWS CLI commands and console instructions for applying policies
+
+3. **Multi-region Support**:
+   - Verify images across different AWS regions
+   - Handle region-specific ECR endpoints automatically
+   - Support for workflows that use images from multiple regions
+
 ### Workflow Linting and Validation
 
 The MCP server includes built-in workflow linting capabilities for validating WDL and CWL workflows before deployment:
@@ -184,6 +219,15 @@ The MCP server includes built-in workflow linting capabilities for validating WD
    → Check for missing inputs, outputs, or runtime requirements
    → Validate import resolution and dependencies
    → Get detailed error messages and warnings
+   ```
+
+6. **Container Image Verification**:
+   ```
+   User: "Verify my container images work with HealthOmics"
+   → Use VerifyAHOContainerImages to check ECR accessibility
+   → Validate repository policies and permissions
+   → Generate compliant policies with GenAHOECRRepoPolicy
+   → Ensure images exist in the correct regions
    ```
 
 ### Important Considerations
@@ -282,7 +326,10 @@ The following IAM permissions are required:
                 "omics:GetRunTask",
                 "logs:DescribeLogGroups",
                 "logs:DescribeLogStreams",
-                "logs:GetLogEvents"
+                "logs:GetLogEvents",
+                "ecr:DescribeRepositories",
+                "ecr:DescribeImages",
+                "ecr:GetRepositoryPolicy"
             ],
             "Resource": "*"
         },
