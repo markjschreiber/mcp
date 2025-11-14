@@ -22,12 +22,7 @@
       "**/*.cs",
       "**/*.properties",
       "**/*.xml",
-      "**/.coverage",
-      "**/.coverage.*",
-      "**/htmlcov/**",
-      "**/.pytest_cache/**",
-      "**/coverage.xml",
-      "**/.ruff_cache/**"
+      "samples/**"
     ],
     "include": [
       "**/*.py",
@@ -39,12 +34,7 @@
   {
     "exclude": [
       "docusaurus/**",
-      "**/.coverage",
-      "**/.coverage.*",
-      "**/htmlcov/**",
-      "**/.pytest_cache/**",
-      "**/coverage.xml",
-      "**/.ruff_cache/**"
+      "samples/**"
     ],
     "include": [
       "**/*.java",
@@ -55,6 +45,9 @@
     "license": "./.github/workflows/check-license-header-slash.txt"
   },
   {
+    "exclude": [
+      "samples/**"
+    ],
     "include": [
       "**/*.md",
       "**/LICENSE",
