@@ -21,7 +21,13 @@
       "**/*.ts",
       "**/*.cs",
       "**/*.properties",
-      "**/*.xml"
+      "**/*.xml",
+      "**/.coverage",
+      "**/.coverage.*",
+      "**/htmlcov/**",
+      "**/.pytest_cache/**",
+      "**/coverage.xml",
+      "**/.ruff_cache/**"
     ],
     "include": [
       "**/*.py",
@@ -32,7 +38,13 @@
   },
   {
     "exclude": [
-      "docusaurus/**"
+      "docusaurus/**",
+      "**/.coverage",
+      "**/.coverage.*",
+      "**/htmlcov/**",
+      "**/.pytest_cache/**",
+      "**/coverage.xml",
+      "**/.ruff_cache/**"
     ],
     "include": [
       "**/*.java",
