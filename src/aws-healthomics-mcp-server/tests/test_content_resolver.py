@@ -80,15 +80,15 @@ _traversal_path = st.one_of(
 
 
 # ---------------------------------------------------------------------------
-# Property 1: Content input type detection correctness
-# Feature: file-path-content-resolution, Property 1: Content input type detection correctness
+# Property: Content input type detection correctness
+# Feature: file-path-content-resolution, Property: Content input type detection correctness
 # ---------------------------------------------------------------------------
 
 
 class TestContentInputTypeDetection:
     """Property tests for detect_content_input_type correctness.
 
-    Validates: Requirements Content Input Type Detection (1.1, 1.2, 1.3)
+    Validates: Requirements Content Input Type Detection
     """
 
     @given(uri=_valid_s3_uri)
@@ -130,15 +130,15 @@ class TestContentInputTypeDetection:
 
 
 # ---------------------------------------------------------------------------
-# Property 2: S3 URI detection takes precedence over local file
-# Feature: file-path-content-resolution, Property 2: S3 URI detection takes precedence
+# Property: S3 URI detection takes precedence over local file
+# Feature: file-path-content-resolution, Property: S3 URI detection takes precedence
 # ---------------------------------------------------------------------------
 
 
 class TestS3URIPrecedence:
     """Property tests for S3 URI precedence over local file detection.
 
-    Validates: Requirements Content Input Type Detection (1.4)
+    Validates: Requirements Content Input Type Detection
     """
 
     @given(bucket=_s3_bucket_name, key=_s3_key)
@@ -159,15 +159,15 @@ class TestS3URIPrecedence:
 
 
 # ---------------------------------------------------------------------------
-# Property 7: Path traversal rejection
-# Feature: file-path-content-resolution, Property 7: Path traversal rejection
+# Property: Path traversal rejection
+# Feature: file-path-content-resolution, Property: Path traversal rejection
 # ---------------------------------------------------------------------------
 
 
 class TestPathTraversalRejection:
     """Property tests for path traversal rejection in _validate_local_path.
 
-    Validates: Requirements Content Resolution Security (9.1)
+    Validates: Requirements Content Resolution Security
     """
 
     @given(path=_traversal_path)
@@ -182,15 +182,15 @@ class TestPathTraversalRejection:
 
 
 # ---------------------------------------------------------------------------
-# Property 8: S3 URI format validation
-# Feature: file-path-content-resolution, Property 8: S3 URI format validation
+# Property: S3 URI format validation
+# Feature: file-path-content-resolution, Property: S3 URI format validation
 # ---------------------------------------------------------------------------
 
 
 class TestS3URIFormatValidation:
     """Property tests for S3 URI format validation in _validate_s3_uri_format.
 
-    Validates: Requirements Content Resolution Security (9.2)
+    Validates: Requirements Content Resolution Security
     """
 
     @settings(max_examples=100)
@@ -256,15 +256,15 @@ class TestS3URIFormatValidation:
 
 
 # ---------------------------------------------------------------------------
-# Property 9: File size limit enforcement
-# Feature: file-path-content-resolution, Property 9: File size limit enforcement
+# Property: File size limit enforcement
+# Feature: file-path-content-resolution, Property: File size limit enforcement
 # ---------------------------------------------------------------------------
 
 
 class TestFileSizeLimitEnforcement:
     """Property tests for file size limit enforcement in _check_size_limit.
 
-    Validates: Requirements Content Resolution Security (9.3, 9.4)
+    Validates: Requirements Content Resolution Security
     """
 
     @given(
@@ -298,16 +298,16 @@ class TestFileSizeLimitEnforcement:
 
 
 # ---------------------------------------------------------------------------
-# Property 3: Local file content round-trip
-# Feature: file-path-content-resolution, Property 3: Local file content round-trip
+# Property: Local file content round-trip
+# Feature: file-path-content-resolution, Property: Local file content round-trip
 # ---------------------------------------------------------------------------
 
 
 class TestLocalFileContentRoundTrip:
     """Property tests for local file content round-trip via resolve_single_content.
 
-    Validates: Requirements Local File Content Resolution (2.1, 2.4, 2.5),
-    Create Workflow (7.1), Create Workflow Version (8.1)
+    Validates: Requirements Local File Content Resolution,
+    Create Workflow, Create Workflow Version
     """
 
     @settings(
@@ -363,15 +363,15 @@ class TestLocalFileContentRoundTrip:
 
 
 # ---------------------------------------------------------------------------
-# Property 4: S3 object content round-trip
-# Feature: file-path-content-resolution, Property 4: S3 object content round-trip
+# Property: S3 object content round-trip
+# Feature: file-path-content-resolution, Property: S3 object content round-trip
 # ---------------------------------------------------------------------------
 
 
 class TestS3ObjectContentRoundTrip:
     """Property tests for S3 object content round-trip via resolve_single_content.
 
-    Validates: Requirements S3 Content Resolution (3.1)
+    Validates: Requirements S3 Content Resolution
     """
 
     @settings(max_examples=100)
@@ -441,16 +441,16 @@ class TestS3ObjectContentRoundTrip:
 
 
 # ---------------------------------------------------------------------------
-# Property 10: Inline content passthrough
-# Feature: file-path-content-resolution, Property 10: Inline content passthrough
+# Property: Inline content passthrough
+# Feature: file-path-content-resolution, Property: Inline content passthrough
 # ---------------------------------------------------------------------------
 
 
 class TestInlineContentPassthrough:
     """Property tests for inline content passthrough via resolve_single_content.
 
-    Validates: Requirements Backward Compatibility (10.1, 10.2),
-    Lint Workflow Definition (4.3), Package Workflow (6.3)
+    Validates: Requirements Backward Compatibility,
+    Lint Workflow Definition, Package Workflow
     """
 
     @settings(max_examples=100)
@@ -499,15 +499,15 @@ _file_dict = st.dictionaries(
 
 
 # ---------------------------------------------------------------------------
-# Property 5: Local bundle round-trip (directory and ZIP)
-# Feature: file-path-content-resolution, Property 5: Local bundle round-trip
+# Property: Local bundle round-trip (directory and ZIP)
+# Feature: file-path-content-resolution, Property: Local bundle round-trip
 # ---------------------------------------------------------------------------
 
 
 class TestLocalBundleRoundTrip:
     """Property tests for local bundle round-trip via resolve_bundle_content.
 
-    Validates: Requirements Lint Workflow Bundle (5.1, 5.3)
+    Validates: Requirements Lint Workflow Bundle
     """
 
     @settings(
@@ -564,15 +564,15 @@ class TestLocalBundleRoundTrip:
 
 
 # ---------------------------------------------------------------------------
-# Property 6: S3 bundle round-trip (prefix and ZIP)
-# Feature: file-path-content-resolution, Property 6: S3 bundle round-trip
+# Property: S3 bundle round-trip (prefix and ZIP)
+# Feature: file-path-content-resolution, Property: S3 bundle round-trip
 # ---------------------------------------------------------------------------
 
 
 class TestS3BundleRoundTrip:
     """Property tests for S3 bundle round-trip via resolve_bundle_content.
 
-    Validates: Requirements Lint Workflow Bundle (5.2, 5.4)
+    Validates: Requirements Lint Workflow Bundle
     """
 
     @settings(max_examples=100)
@@ -670,15 +670,15 @@ class TestS3BundleRoundTrip:
 
 
 # ---------------------------------------------------------------------------
-# Property 13: Additional files individual resolution
-# Feature: file-path-content-resolution, Property 13: Additional files individual resolution
+# Property: Additional files individual resolution
+# Feature: file-path-content-resolution, Property: Additional files individual resolution
 # ---------------------------------------------------------------------------
 
 
 class TestAdditionalFilesIndividualResolution:
     """Property tests for resolving additional files individually via resolve_single_content.
 
-    Validates: Requirements Package Workflow (6.4)
+    Validates: Requirements Package Workflow
     """
 
     @settings(
@@ -712,7 +712,7 @@ class TestAdditionalFilesIndividualResolution:
 
         Resolving each individually produces the expected content.
 
-        **Validates: Requirements Package Workflow (6.4)**
+        **Validates: Requirements Package Workflow**
         """
         tmp_dir = tmp_path_factory.mktemp(f'addfiles_{suffix}')
 
@@ -744,16 +744,16 @@ class TestAdditionalFilesIndividualResolution:
 
 
 # ---------------------------------------------------------------------------
-# Property 11: Deprecated alias equivalence
-# Feature: file-path-content-resolution, Property 11: Deprecated alias equivalence
+# Property: Deprecated alias equivalence
+# Feature: file-path-content-resolution, Property: Deprecated alias equivalence
 # ---------------------------------------------------------------------------
 
 
 class TestDeprecatedAliasEquivalence:
     """Property tests for deprecated definition_zip_base64 alias equivalence.
 
-    Validates: Requirements Backward Compatibility (10.5),
-    Parameter Deprecation (11.1, 11.2, 11.3)
+    Validates: Requirements Backward Compatibility,
+    Parameter Deprecation
     """
 
     @settings(max_examples=100)
@@ -821,15 +821,15 @@ class TestDeprecatedAliasEquivalence:
 
 
 # ---------------------------------------------------------------------------
-# Property 12: definition_source precedence over deprecated alias
-# Feature: file-path-content-resolution, Property 12: definition_source precedence
+# Property: definition_source precedence over deprecated alias
+# Feature: file-path-content-resolution, Property: definition_source precedence
 # ---------------------------------------------------------------------------
 
 
 class TestDefinitionSourcePrecedence:
     """Property tests for definition_source precedence over deprecated alias.
 
-    Validates: Requirements Parameter Deprecation (11.5)
+    Validates: Requirements Parameter Deprecation
     """
 
     @settings(max_examples=100)
@@ -912,8 +912,8 @@ class TestDefinitionSourcePrecedence:
 class TestDetectionEdgeCases:
     """Unit tests for detect_content_input_type edge cases.
 
-    Validates: Requirements Local File Content Resolution (2.2, 2.3),
-    Content Resolution Security (9.1, 9.2, 9.3)
+    Validates: Requirements Local File Content Resolution,
+    Content Resolution Security
     """
 
     def test_empty_string(self) -> None:
@@ -950,8 +950,8 @@ class TestDetectionEdgeCases:
 class TestErrorPropagation:
     """Unit tests for error propagation from resolve_single_content.
 
-    Validates: Requirements Local File Content Resolution (2.2, 2.3),
-    S3 Content Resolution (3.2, 3.3)
+    Validates: Requirements Local File Content Resolution,
+    S3 Content Resolution
     """
 
     @pytest.mark.asyncio
@@ -1028,7 +1028,7 @@ class TestErrorPropagation:
 class TestZipEdgeCases:
     """Unit tests for ZIP extraction edge cases.
 
-    Validates: Requirements Content Resolution Security (9.1, 9.2, 9.3)
+    Validates: Requirements Content Resolution Security
     """
 
     def test_empty_zip(self) -> None:
@@ -1100,7 +1100,7 @@ class TestZipEdgeCases:
 class TestDirectoryEdgeCases:
     """Unit tests for directory reading edge cases.
 
-    Validates: Requirements Content Resolution Security (9.1, 9.2, 9.3)
+    Validates: Requirements Content Resolution Security
     """
 
     @pytest.mark.asyncio

@@ -14,8 +14,8 @@
 
 """Integration tests for content resolution in package_workflow.
 
-Validates: Requirements Package Workflow with File Path or S3 URI (6.1-6.5),
-Backward Compatibility (10.2).
+Validates: Requirements Package Workflow with File Path or S3 URI,
+Backward Compatibility.
 """
 
 import base64
@@ -39,15 +39,15 @@ def _unzip_base64(b64: str) -> dict[str, str]:
 class TestPackageWorkflowResolution:
     """Integration tests for content resolution in package_workflow.
 
-    Validates: Requirements Package Workflow with File Path or S3 URI
-    (6.1, 6.2, 6.3, 6.4, 6.5), Backward Compatibility (10.2).
+    Validates: Requirements Package Workflow with File Path or S3 URI,
+    Backward Compatibility.
     """
 
     @pytest.mark.asyncio
     async def test_local_file_path(self, tmp_path):
         """Package resolves a local file path for main_file_content.
 
-        Validates: Requirement Package Workflow with File Path or S3 URI (6.1)
+        Validates: Requirement Package Workflow with File Path or S3 URI
         """
         wdl_file = tmp_path / 'workflow.wdl'
         wdl_file.write_text(SAMPLE_WDL)
@@ -68,7 +68,7 @@ class TestPackageWorkflowResolution:
     async def test_s3_uri(self):
         """Package resolves an S3 URI for main_file_content.
 
-        Validates: Requirement Package Workflow with File Path or S3 URI (6.2)
+        Validates: Requirement Package Workflow with File Path or S3 URI
         """
         ctx = AsyncMock()
 
@@ -99,8 +99,8 @@ class TestPackageWorkflowResolution:
     async def test_inline_content(self):
         """Package passes inline content through unchanged (backward compat).
 
-        Validates: Requirement Package Workflow with File Path or S3 URI (6.3),
-        Backward Compatibility (10.2).
+        Validates: Requirement Package Workflow with File Path or S3 URI,
+        Backward Compatibility.
         """
         ctx = AsyncMock()
         result = await package_workflow(
@@ -118,7 +118,7 @@ class TestPackageWorkflowResolution:
     async def test_additional_files_resolved_individually(self, tmp_path):
         """Each additional_files value is resolved individually.
 
-        Validates: Requirement Package Workflow with File Path or S3 URI (6.4)
+        Validates: Requirement Package Workflow with File Path or S3 URI
         """
         tasks_file = tmp_path / 'tasks.wdl'
         tasks_content = 'version 1.0\ntask T { }'
@@ -145,7 +145,7 @@ class TestPackageWorkflowResolution:
     async def test_error_propagation_main_file(self):
         """Error is returned when main file resolution fails.
 
-        Validates: Requirement Package Workflow with File Path or S3 URI (6.5)
+        Validates: Requirement Package Workflow with File Path or S3 URI
         """
         ctx = AsyncMock()
 
@@ -168,7 +168,7 @@ class TestPackageWorkflowResolution:
     async def test_error_propagation_additional_file(self):
         """Error is returned when an additional file resolution fails.
 
-        Validates: Requirement Package Workflow with File Path or S3 URI (6.5)
+        Validates: Requirement Package Workflow with File Path or S3 URI
         """
         ctx = AsyncMock()
 

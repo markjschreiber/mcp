@@ -33,14 +33,14 @@ from unittest.mock import MagicMock, patch
 
 # ---------------------------------------------------------------------------
 # Path traversal rejection
-# Validates: Requirements Content Resolution Security (9.1)
+# Validates: Requirements Content Resolution Security
 # ---------------------------------------------------------------------------
 
 
 class TestPathTraversalRejection:
     """Security tests for path traversal rejection with various patterns.
 
-    Validates: Requirements Content Resolution Security (9.1)
+    Validates: Requirements Content Resolution Security
     """
 
     def test_simple_parent_traversal(self) -> None:
@@ -111,14 +111,14 @@ class TestPathTraversalRejection:
 
 # ---------------------------------------------------------------------------
 # S3 URI format validation
-# Validates: Requirements Content Resolution Security (9.2)
+# Validates: Requirements Content Resolution Security
 # ---------------------------------------------------------------------------
 
 
 class TestS3URIFormatValidation:
     """Security tests for S3 URI format validation with malformed URIs.
 
-    Validates: Requirements Content Resolution Security (9.2)
+    Validates: Requirements Content Resolution Security
     """
 
     def test_bare_s3_prefix(self) -> None:
@@ -170,14 +170,14 @@ class TestS3URIFormatValidation:
 
 # ---------------------------------------------------------------------------
 # Size limit enforcement
-# Validates: Requirements Content Resolution Security (9.3, 9.4)
+# Validates: Requirements Content Resolution Security
 # ---------------------------------------------------------------------------
 
 
 class TestSizeLimitEnforcement:
     """Security tests for size limit enforcement on local files and S3 objects.
 
-    Validates: Requirements Content Resolution Security (9.3, 9.4)
+    Validates: Requirements Content Resolution Security
     """
 
     def test_size_exactly_at_limit(self) -> None:
@@ -225,14 +225,14 @@ class TestSizeLimitEnforcement:
 
 # ---------------------------------------------------------------------------
 # Security checks run before I/O operations
-# Validates: Requirements Content Resolution Security (9.1, 9.2, 9.5)
+# Validates: Requirements Content Resolution Security
 # ---------------------------------------------------------------------------
 
 
 class TestSecurityBeforeIO:
     """Tests that security checks execute before any I/O operations.
 
-    Validates: Requirements Content Resolution Security (9.1, 9.2, 9.5)
+    Validates: Requirements Content Resolution Security
     """
 
     @pytest.mark.asyncio

@@ -14,9 +14,9 @@
 
 """Integration tests for content resolution in workflow linting tools.
 
-Validates: Requirements Lint Workflow Definition with File Path or S3 URI (4.1-4.4),
-Lint Workflow Bundle with File Path or S3 URI (5.1-5.6),
-Backward Compatibility (10.1).
+Validates: Requirements Lint Workflow Definition with File Path or S3 URI,
+Lint Workflow Bundle with File Path or S3 URI,
+Backward Compatibility.
 """
 
 import pytest
@@ -53,15 +53,15 @@ def _mock_linter():
 class TestLintWorkflowDefinitionResolution:
     """Integration tests for content resolution in lint_workflow_definition.
 
-    Validates: Requirements Lint Workflow Definition with File Path or S3 URI
-    (4.1, 4.2, 4.3, 4.4), Backward Compatibility (10.1).
+    Validates: Requirements Lint Workflow Definition with File Path or S3 URI,
+    Backward Compatibility.
     """
 
     @pytest.mark.asyncio
     async def test_local_file_path(self, tmp_path):
         """Lint resolves a local file path to its content before linting.
 
-        Validates: Requirement Lint Workflow Definition with File Path or S3 URI (4.1)
+        Validates: Requirement Lint Workflow Definition with File Path or S3 URI
         """
         wdl_file = tmp_path / 'workflow.wdl'
         wdl_file.write_text(SAMPLE_WDL)
@@ -88,7 +88,7 @@ class TestLintWorkflowDefinitionResolution:
     async def test_s3_uri(self):
         """Lint resolves an S3 URI to its content before linting.
 
-        Validates: Requirement Lint Workflow Definition with File Path or S3 URI (4.2)
+        Validates: Requirement Lint Workflow Definition with File Path or S3 URI
         """
         ctx = AsyncMock()
         mock_lint = _mock_linter()
@@ -126,8 +126,8 @@ class TestLintWorkflowDefinitionResolution:
     async def test_inline_content(self):
         """Lint passes inline content through unchanged.
 
-        Validates: Requirement Lint Workflow Definition with File Path or S3 URI (4.3),
-        Backward Compatibility (10.1).
+        Validates: Requirement Lint Workflow Definition with File Path or S3 URI,
+        Backward Compatibility.
         """
         ctx = AsyncMock()
         mock_lint = _mock_linter()
@@ -151,7 +151,7 @@ class TestLintWorkflowDefinitionResolution:
     async def test_resolution_error_file_not_found(self):
         """Error is returned when the local file does not exist.
 
-        Validates: Requirement Lint Workflow Definition with File Path or S3 URI (4.4)
+        Validates: Requirement Lint Workflow Definition with File Path or S3 URI
         """
         ctx = AsyncMock()
 
@@ -178,15 +178,14 @@ class TestLintWorkflowDefinitionResolution:
 class TestLintWorkflowBundleResolution:
     """Integration tests for content resolution in lint_workflow_bundle.
 
-    Validates: Requirements Lint Workflow Bundle with File Path or S3 URI
-    (5.1, 5.2, 5.5, 5.6).
+    Validates: Requirements Lint Workflow Bundle with File Path or S3 URI.
     """
 
     @pytest.mark.asyncio
     async def test_local_directory(self, tmp_path):
         """Bundle resolves a local directory path to a file dictionary.
 
-        Validates: Requirement Lint Workflow Bundle with File Path or S3 URI (5.1)
+        Validates: Requirement Lint Workflow Bundle with File Path or S3 URI
         """
         (tmp_path / 'main.wdl').write_text(SAMPLE_WDL)
         (tmp_path / 'tasks.wdl').write_text('version 1.0\ntask T { }')
@@ -216,7 +215,7 @@ class TestLintWorkflowBundleResolution:
     async def test_dict_passthrough(self):
         """Bundle passes a dict through directly (backward compatibility).
 
-        Validates: Requirement Lint Workflow Bundle with File Path or S3 URI (5.5)
+        Validates: Requirement Lint Workflow Bundle with File Path or S3 URI
         """
         workflow_files = {
             'main.wdl': SAMPLE_WDL,
@@ -246,7 +245,7 @@ class TestLintWorkflowBundleResolution:
     async def test_resolution_error_propagation(self):
         """Error is returned when bundle resolution fails.
 
-        Validates: Requirement Lint Workflow Bundle with File Path or S3 URI (5.6)
+        Validates: Requirement Lint Workflow Bundle with File Path or S3 URI
         """
         ctx = AsyncMock()
 

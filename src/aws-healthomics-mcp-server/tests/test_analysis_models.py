@@ -293,7 +293,7 @@ class TestAnalysisModelsPropertyBased:
         potential_savings: float,
         is_high_priority: bool,
     ):
-        """Property 12: Output Completeness - TaskCostMetrics.
+        """Property: Output Completeness - TaskCostMetrics.
 
         For any successful analysis, the TaskCostMetrics output SHALL contain all required fields:
         - estimatedUSD
@@ -301,9 +301,7 @@ class TestAnalysisModelsPropertyBased:
         - recommendedCpus
         - recommendedMemoryGiB
         - potentialSavingsUSD
-
-        **Validates: Requirements 1.4, 3.4, 4.3**
-        **Feature: run-analyzer-enhancement, Property 12: Output Completeness**
+        **Feature: run-analyzer-enhancement, Property: Output Completeness**
         """
         metrics = TaskCostMetrics(
             taskName=task_name,
@@ -377,7 +375,7 @@ class TestAnalysisModelsPropertyBased:
         avg_cpus: float,
         avg_memory: float,
     ):
-        """Property 12: Output Completeness - RunCostSummary.
+        """Property: Output Completeness - RunCostSummary.
 
         For any successful analysis, the RunCostSummary output SHALL contain all required fields:
         - totalEstimatedUSD
@@ -388,9 +386,7 @@ class TestAnalysisModelsPropertyBased:
         - peakConcurrentMemoryGiB
         - averageConcurrentCpus
         - averageConcurrentMemoryGiB
-
-        **Validates: Requirements 2.3, 4.3, 9.4, 11.4**
-        **Feature: run-analyzer-enhancement, Property 12: Output Completeness**
+        **Feature: run-analyzer-enhancement, Property: Output Completeness**
         """
         summary = RunCostSummary(
             runId=run_id,
@@ -466,13 +462,11 @@ class TestAnalysisModelsPropertyBased:
         total_estimated: float,
         recommended_instance: str,
     ):
-        """Property 12: Output Completeness - CrossRunAggregate.
+        """Property: Output Completeness - CrossRunAggregate.
 
         For any multi-run analysis, the CrossRunAggregate output SHALL contain all required fields
         when multiple runs are provided.
-
-        **Validates: Requirements 7.3**
-        **Feature: run-analyzer-enhancement, Property 12: Output Completeness**
+        **Feature: run-analyzer-enhancement, Property: Output Completeness**
         """
         aggregate = CrossRunAggregate(
             baseTaskName=base_task_name,

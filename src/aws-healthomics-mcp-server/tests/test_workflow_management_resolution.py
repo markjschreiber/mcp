@@ -14,10 +14,10 @@
 
 """Integration tests for content resolution in create_workflow and create_workflow_version.
 
-Validates: Requirements Create Workflow with File Path or S3 URI (7.1-7.5),
-Create Workflow Version with File Path or S3 URI (8.1-8.4),
-Backward Compatibility (10.3, 10.4, 10.5),
-Parameter Deprecation for definition_zip_base64 (11.1-11.6).
+Validates: Requirements Create Workflow with File Path or S3 URI,
+Create Workflow Version with File Path or S3 URI,
+Backward Compatibility,
+Parameter Deprecation for definition_zip_base64.
 """
 
 import base64
@@ -70,17 +70,17 @@ def _resolved_binary(content: bytes, source: str, input_type=None):
 class TestCreateWorkflowResolution:
     """Integration tests for content resolution in create_workflow.
 
-    Validates: Requirements Create Workflow with File Path or S3 URI
-    (7.1, 7.2, 7.3, 7.4, 7.5), Backward Compatibility (10.3),
-    Parameter Deprecation (11.1, 11.6).
+    Validates: Requirements Create Workflow with File Path or S3 URI,
+    Backward Compatibility,
+    Parameter Deprecation.
     """
 
     @pytest.mark.asyncio
     async def test_definition_source_base64(self):
         """create_workflow resolves base64 content via definition_source.
 
-        Validates: Requirement Create Workflow with File Path or S3 URI (7.3),
-        Backward Compatibility (10.3).
+        Validates: Requirement Create Workflow with File Path or S3 URI,
+        Backward Compatibility.
         """
         ctx = AsyncMock()
         mock_client = _mock_omics_client()
@@ -104,7 +104,7 @@ class TestCreateWorkflowResolution:
     async def test_definition_source_local_zip(self, tmp_path):
         """create_workflow resolves a local ZIP file path via definition_source.
 
-        Validates: Requirement Create Workflow with File Path or S3 URI (7.1)
+        Validates: Requirement Create Workflow with File Path or S3 URI
         """
         zip_file = tmp_path / 'workflow.zip'
         zip_file.write_bytes(ZIP_BYTES)
@@ -130,7 +130,7 @@ class TestCreateWorkflowResolution:
     async def test_definition_source_s3_uri(self):
         """create_workflow resolves an S3 URI via definition_source.
 
-        Validates: Requirement Create Workflow with File Path or S3 URI (7.2)
+        Validates: Requirement Create Workflow with File Path or S3 URI
         """
         ctx = AsyncMock()
         mock_client = _mock_omics_client()
@@ -167,7 +167,7 @@ class TestCreateWorkflowResolution:
     async def test_deprecated_alias_works_and_logs_warning(self):
         """definition_zip_base64 alias works and triggers deprecation warning.
 
-        Validates: Requirement Parameter Deprecation (11.1, 11.4, 11.6)
+        Validates: Requirement Parameter Deprecation
         """
         ctx = AsyncMock()
         mock_client = _mock_omics_client()
@@ -196,7 +196,7 @@ class TestCreateWorkflowResolution:
     async def test_definition_source_precedence(self):
         """definition_source takes precedence when both it and alias are provided.
 
-        Validates: Requirement Parameter Deprecation (11.5)
+        Validates: Requirement Parameter Deprecation
         """
         ctx = AsyncMock()
         mock_client = _mock_omics_client()
@@ -232,7 +232,7 @@ class TestCreateWorkflowResolution:
     async def test_definition_uri_unchanged(self):
         """definition_uri still works and is passed directly to the API.
 
-        Validates: Requirement Backward Compatibility (10.4)
+        Validates: Requirement Backward Compatibility
         """
         ctx = AsyncMock()
         mock_client = _mock_omics_client()
@@ -256,7 +256,7 @@ class TestCreateWorkflowResolution:
     async def test_resolution_error_propagation(self):
         """Error is returned when definition_source resolution fails.
 
-        Validates: Requirement Create Workflow with File Path or S3 URI (7.5)
+        Validates: Requirement Create Workflow with File Path or S3 URI
         """
         ctx = AsyncMock()
 
@@ -277,15 +277,15 @@ class TestCreateWorkflowResolution:
 class TestCreateWorkflowVersionResolution:
     """Integration tests for content resolution in create_workflow_version.
 
-    Validates: Requirements Create Workflow Version with File Path or S3 URI
-    (8.1, 8.2, 8.3, 8.4), Parameter Deprecation (11.2, 11.6).
+    Validates: Requirements Create Workflow Version with File Path or S3 URI,
+    Parameter Deprecation.
     """
 
     @pytest.mark.asyncio
     async def test_definition_source_base64(self):
         """create_workflow_version resolves base64 content via definition_source.
 
-        Validates: Requirement Create Workflow Version with File Path or S3 URI (8.3)
+        Validates: Requirement Create Workflow Version with File Path or S3 URI
         """
         ctx = AsyncMock()
         mock_client = _mock_omics_client()
@@ -309,7 +309,7 @@ class TestCreateWorkflowVersionResolution:
     async def test_definition_source_local_zip(self, tmp_path):
         """create_workflow_version resolves a local ZIP file path.
 
-        Validates: Requirement Create Workflow Version with File Path or S3 URI (8.1)
+        Validates: Requirement Create Workflow Version with File Path or S3 URI
         """
         zip_file = tmp_path / 'workflow.zip'
         zip_file.write_bytes(ZIP_BYTES)
@@ -336,7 +336,7 @@ class TestCreateWorkflowVersionResolution:
     async def test_definition_source_s3_uri(self):
         """create_workflow_version resolves an S3 URI via definition_source.
 
-        Validates: Requirement Create Workflow Version with File Path or S3 URI (8.2)
+        Validates: Requirement Create Workflow Version with File Path or S3 URI
         """
         ctx = AsyncMock()
         mock_client = _mock_omics_client()
@@ -374,7 +374,7 @@ class TestCreateWorkflowVersionResolution:
     async def test_deprecated_alias_works(self):
         """definition_zip_base64 alias works for create_workflow_version.
 
-        Validates: Requirement Parameter Deprecation (11.2, 11.3)
+        Validates: Requirement Parameter Deprecation
         """
         ctx = AsyncMock()
         mock_client = _mock_omics_client()
@@ -398,7 +398,7 @@ class TestCreateWorkflowVersionResolution:
     async def test_backward_compat_base64_format(self):
         """Existing base64 format still works via definition_source.
 
-        Validates: Requirement Backward Compatibility (10.5)
+        Validates: Requirement Backward Compatibility
         """
         ctx = AsyncMock()
         mock_client = _mock_omics_client()
@@ -422,7 +422,7 @@ class TestCreateWorkflowVersionResolution:
     async def test_resolution_error_propagation(self):
         """Error is returned when definition_source resolution fails.
 
-        Validates: Requirement Create Workflow Version with File Path or S3 URI (8.4)
+        Validates: Requirement Create Workflow Version with File Path or S3 URI
         """
         ctx = AsyncMock()
 
