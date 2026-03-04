@@ -23,11 +23,13 @@ from awslabs.aws_healthomics_mcp_server.utils.content_resolver import (
     ContentInputType,
     ResolvedContent,
     _check_size_limit,
-    _validate_local_path,
-    _validate_s3_uri_format,
     detect_content_input_type,
     resolve_bundle_content,
     resolve_single_content,
+)
+from awslabs.aws_healthomics_mcp_server.utils.path_utils import (
+    validate_local_path,
+    validate_s3_uri_format,
 )
 from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
@@ -108,8 +110,7 @@ class TestContentInputTypeDetection:
         **Validates: Requirements Content Input Type Detection**
         """
         # Filter out strings that happen to be existing paths
-        if os.path.exists(content):
-            pytest.skip('generated string happens to be an existing path')
+        assume(not os.path.exists(content))
         result = detect_content_input_type(content)
         assert result == ContentInputType.INLINE_CONTENT
 
@@ -165,7 +166,7 @@ class TestS3URIPrecedence:
 
 
 class TestPathTraversalRejection:
-    """Property tests for path traversal rejection in _validate_local_path.
+    """Property tests for path traversal rejection in validate_local_path.
 
     Validates: Requirements Content Resolution Security
     """
@@ -178,7 +179,7 @@ class TestPathTraversalRejection:
         **Validates: Requirements Content Resolution Security**
         """
         with pytest.raises(ValueError, match='Path contains traversal sequences'):
-            _validate_local_path(path)
+            validate_local_path(path)
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +189,7 @@ class TestPathTraversalRejection:
 
 
 class TestS3URIFormatValidation:
-    """Property tests for S3 URI format validation in _validate_s3_uri_format.
+    """Property tests for S3 URI format validation in validate_s3_uri_format.
 
     Validates: Requirements Content Resolution Security
     """
@@ -204,7 +205,7 @@ class TestS3URIFormatValidation:
         key = data.draw(st.text(min_size=0, max_size=30))
         uri = f's3:///{key}'
         with pytest.raises(ValueError, match='Invalid S3 URI format'):
-            _validate_s3_uri_format(uri)
+            validate_s3_uri_format(uri)
 
     @settings(max_examples=100)
     @given(data=st.data())
@@ -228,7 +229,7 @@ class TestS3URIFormatValidation:
         key = data.draw(st.text(min_size=1, max_size=30).filter(lambda k: k.strip()))
         uri = f's3://{invalid_bucket}/{key}'
         with pytest.raises(ValueError, match='Invalid S3 URI format'):
-            _validate_s3_uri_format(uri)
+            validate_s3_uri_format(uri)
 
     @settings(max_examples=100)
     @given(bucket=_s3_bucket_name)
@@ -236,7 +237,7 @@ class TestS3URIFormatValidation:
         """s3://bucket with no key (empty path) raises ValueError.
 
         Note: parse_s3_path returns an empty string for the key when there is
-        no path component. The _validate_s3_uri_format function delegates to
+        no path component. The validate_s3_uri_format function delegates to
         parse_s3_path which does not reject empty keys — it returns ('bucket', '').
         If the implementation accepts empty keys, this test verifies that
         behaviour is consistent.
@@ -248,7 +249,7 @@ class TestS3URIFormatValidation:
         # The design says "empty key" should be rejected, so we test for that.
         # If the implementation allows it, we need to know.
         try:
-            _validate_s3_uri_format(uri)
+            validate_s3_uri_format(uri)
             # If it doesn't raise, the implementation allows empty keys.
             # This is acceptable per parse_s3_path behaviour.
         except ValueError:
@@ -1156,17 +1157,17 @@ class TestCoverageGaps:
     """Targeted tests to close coverage gaps in content_resolver.py."""
 
     def test_validate_local_path_normpath_traversal(self) -> None:
-        """_validate_local_path catches traversal via os.path.normpath.
+        """validate_local_path catches traversal via os.path.normpath.
 
         Paths like 'foo/bar/../../etc/passwd' where '..' is not caught by the
         simple string prefix/suffix checks but is caught by normpath splitting.
         """
-        from awslabs.aws_healthomics_mcp_server.utils.content_resolver import (
-            _validate_local_path,
+        from awslabs.aws_healthomics_mcp_server.utils.path_utils import (
+            validate_local_path,
         )
 
         with pytest.raises(ValueError, match='Path contains traversal sequences'):
-            _validate_local_path('foo/bar/../../etc/passwd')
+            validate_local_path('foo/bar/../../etc/passwd')
 
     @pytest.mark.asyncio
     @patch('awslabs.aws_healthomics_mcp_server.utils.aws_utils.get_aws_session')

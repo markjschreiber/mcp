@@ -20,11 +20,15 @@ import base64
 import io
 import os
 import zipfile
+from awslabs.aws_healthomics_mcp_server.utils.path_utils import (
+    validate_local_path,
+    validate_s3_uri_format,
+)
 from botocore.exceptions import ClientError
 from dataclasses import dataclass
 from enum import Enum
 from loguru import logger
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Union
 
 
 class ContentInputType(str, Enum):
@@ -59,57 +63,6 @@ class ResolvedBundle:
     files: Dict[str, str]
     input_type: ContentInputType
     source: str
-
-
-def _validate_local_path(path: str) -> None:
-    """Validate that a local file path does not contain path traversal sequences.
-
-    Raises ValueError if the path contains '..' as a path component,
-    following the same pattern as validate_path_to_main in validation_utils.py.
-
-    Args:
-        path: The file path to validate.
-
-    Raises:
-        ValueError: If the path contains traversal sequences.
-    """
-    if path.startswith('../') or '/../' in path or path == '..' or path.endswith('/..'):
-        raise ValueError(f'Path contains traversal sequences: {path}')
-    # Also check OS-native separators for cross-platform safety
-    parts = os.path.normpath(path).split(os.sep)
-    if '..' in parts:
-        raise ValueError(f'Path contains traversal sequences: {path}')
-
-
-def _validate_s3_uri_format(uri: str) -> Tuple[str, str]:
-    """Validate S3 URI format and return parsed bucket and key.
-
-    Uses parse_s3_path and is_valid_bucket_name from s3_utils.py
-    to validate the URI structure.
-
-    Args:
-        uri: The S3 URI to validate (e.g. 's3://bucket/key').
-
-    Returns:
-        Tuple of (bucket_name, key).
-
-    Raises:
-        ValueError: If the URI format is invalid or bucket name is invalid.
-    """
-    from awslabs.aws_healthomics_mcp_server.utils.s3_utils import (
-        is_valid_bucket_name,
-        parse_s3_path,
-    )
-
-    try:
-        bucket, key = parse_s3_path(uri)
-    except ValueError:
-        raise ValueError(f'Invalid S3 URI format: {uri}')
-
-    if not is_valid_bucket_name(bucket):
-        raise ValueError(f'Invalid S3 URI format: {uri}')
-
-    return bucket, key
 
 
 def _check_size_limit(size: int, max_size_bytes: int, source: str) -> None:
@@ -151,7 +104,7 @@ def detect_content_input_type(value: str) -> ContentInputType:
 
     # 2. Local file check (with path traversal guard)
     try:
-        _validate_local_path(value)
+        validate_local_path(value)
         if os.path.exists(value):
             return ContentInputType.LOCAL_FILE
     except ValueError:
@@ -177,7 +130,7 @@ def _read_local_file(path: str, mode: str, max_size_bytes: Optional[int]) -> Uni
         PermissionError: If the file cannot be read due to permissions.
         ValueError: If path traversal is detected or size limit exceeded.
     """
-    _validate_local_path(path)
+    validate_local_path(path)
 
     if not os.path.exists(path):
         raise FileNotFoundError(f'File not found: {path}')
@@ -211,7 +164,7 @@ def _read_s3_object(uri: str, mode: str, max_size_bytes: Optional[int]) -> Union
     Raises:
         ValueError: If URI format is invalid, object not found, or access denied.
     """
-    bucket, key = _validate_s3_uri_format(uri)
+    bucket, key = validate_s3_uri_format(uri)
 
     from awslabs.aws_healthomics_mcp_server.utils.aws_utils import get_aws_session
 
@@ -301,7 +254,7 @@ def _read_local_directory(path: str, max_size_bytes: Optional[int]) -> Dict[str,
         FileNotFoundError: If the directory does not exist.
         ValueError: If path traversal is detected or size limit exceeded.
     """
-    _validate_local_path(path)
+    validate_local_path(path)
 
     if not os.path.exists(path):
         raise FileNotFoundError(f'File not found: {path}')
@@ -341,7 +294,7 @@ def _read_s3_prefix(uri: str, max_size_bytes: Optional[int]) -> Dict[str, str]:
     Raises:
         ValueError: If URI format is invalid or access denied.
     """
-    bucket, prefix = _validate_s3_uri_format(uri)
+    bucket, prefix = validate_s3_uri_format(uri)
 
     from awslabs.aws_healthomics_mcp_server.utils.aws_utils import get_aws_session
 

@@ -22,10 +22,12 @@ import pytest
 from awslabs.aws_healthomics_mcp_server.utils.content_resolver import (
     ContentInputType,
     _check_size_limit,
-    _validate_local_path,
-    _validate_s3_uri_format,
     detect_content_input_type,
     resolve_single_content,
+)
+from awslabs.aws_healthomics_mcp_server.utils.path_utils import (
+    validate_local_path,
+    validate_s3_uri_format,
 )
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -46,27 +48,27 @@ class TestPathTraversalRejection:
     def test_simple_parent_traversal(self) -> None:
         """Reject '../secret' style traversal."""
         with pytest.raises(ValueError, match='Path contains traversal sequences'):
-            _validate_local_path('../secret')
+            validate_local_path('../secret')
 
     def test_mid_path_traversal(self) -> None:
         """Reject 'dir/../secret' style traversal."""
         with pytest.raises(ValueError, match='Path contains traversal sequences'):
-            _validate_local_path('dir/../secret')
+            validate_local_path('dir/../secret')
 
     def test_trailing_traversal(self) -> None:
         """Reject 'dir/..' style traversal."""
         with pytest.raises(ValueError, match='Path contains traversal sequences'):
-            _validate_local_path('dir/..')
+            validate_local_path('dir/..')
 
     def test_bare_double_dot(self) -> None:
         """Reject bare '..' path."""
         with pytest.raises(ValueError, match='Path contains traversal sequences'):
-            _validate_local_path('..')
+            validate_local_path('..')
 
     def test_nested_traversal(self) -> None:
         """Reject deeply nested traversal like 'a/b/../../etc/passwd'."""
         with pytest.raises(ValueError, match='Path contains traversal sequences'):
-            _validate_local_path('a/b/../../etc/passwd')
+            validate_local_path('a/b/../../etc/passwd')
 
     def test_backslash_traversal(self) -> None:
         """Reject backslash-based traversal (cross-platform safety).
@@ -76,7 +78,7 @@ class TestPathTraversalRejection:
         """
         # This uses forward slashes which are caught directly
         with pytest.raises(ValueError, match='Path contains traversal sequences'):
-            _validate_local_path('dir/../../../etc/passwd')
+            validate_local_path('dir/../../../etc/passwd')
 
     def test_backslash_dot_dot_windows(self) -> None:
         r"""Reject '..\\\\windows' style traversal via normpath on any OS."""
@@ -84,17 +86,17 @@ class TestPathTraversalRejection:
         # literal '..\\windows' is a single component, but the normpath
         # split still catches '..' when present as a forward-slash component.
         with pytest.raises(ValueError, match='Path contains traversal sequences'):
-            _validate_local_path('foo/../../bar')
+            validate_local_path('foo/../../bar')
 
     def test_double_traversal_to_etc_passwd(self) -> None:
         """Reject '../../etc/passwd' classic attack pattern."""
         with pytest.raises(ValueError, match='Path contains traversal sequences'):
-            _validate_local_path('../../etc/passwd')
+            validate_local_path('../../etc/passwd')
 
     def test_traversal_with_absolute_prefix(self) -> None:
         """Reject '/tmp/safe/../../etc/passwd' traversal."""
         with pytest.raises(ValueError, match='Path contains traversal sequences'):
-            _validate_local_path('/tmp/safe/../../etc/passwd')
+            validate_local_path('/tmp/safe/../../etc/passwd')
 
     def test_traversal_falls_through_to_inline(self) -> None:
         """Path traversal in detect_content_input_type falls through to INLINE_CONTENT."""
@@ -106,7 +108,7 @@ class TestPathTraversalRejection:
         safe = tmp_path / 'safe.txt'
         safe.write_text('ok')
         # Should not raise
-        _validate_local_path(str(safe))
+        validate_local_path(str(safe))
 
 
 # ---------------------------------------------------------------------------
@@ -124,46 +126,46 @@ class TestS3URIFormatValidation:
     def test_bare_s3_prefix(self) -> None:
         """Reject 's3://' with no bucket or key."""
         with pytest.raises(ValueError, match='Invalid S3 URI format'):
-            _validate_s3_uri_format('s3://')
+            validate_s3_uri_format('s3://')
 
     def test_s3_triple_slash(self) -> None:
         """Reject 's3:///' (empty bucket, slash key)."""
         with pytest.raises(ValueError, match='Invalid S3 URI format'):
-            _validate_s3_uri_format('s3:///')
+            validate_s3_uri_format('s3:///')
 
     def test_s3_triple_slash_with_key(self) -> None:
         """Reject 's3:///key' (empty bucket)."""
         with pytest.raises(ValueError, match='Invalid S3 URI format'):
-            _validate_s3_uri_format('s3:///key')
+            validate_s3_uri_format('s3:///key')
 
     def test_uppercase_bucket(self) -> None:
         """Reject 's3://BUCKET/key' (uppercase bucket name)."""
         with pytest.raises(ValueError, match='Invalid S3 URI format'):
-            _validate_s3_uri_format('s3://BUCKET/key')
+            validate_s3_uri_format('s3://BUCKET/key')
 
     def test_underscore_bucket(self) -> None:
         """Reject 's3://my_bucket/key' (underscore in bucket name)."""
         with pytest.raises(ValueError, match='Invalid S3 URI format'):
-            _validate_s3_uri_format('s3://my_bucket/key')
+            validate_s3_uri_format('s3://my_bucket/key')
 
     def test_too_short_bucket(self) -> None:
         """Reject 's3://ab/key' (bucket name too short)."""
         with pytest.raises(ValueError, match='Invalid S3 URI format'):
-            _validate_s3_uri_format('s3://ab/key')
+            validate_s3_uri_format('s3://ab/key')
 
     def test_bucket_starting_with_hyphen(self) -> None:
         """Reject 's3://-bucket/key' (bucket starts with hyphen)."""
         with pytest.raises(ValueError, match='Invalid S3 URI format'):
-            _validate_s3_uri_format('s3://-bucket/key')
+            validate_s3_uri_format('s3://-bucket/key')
 
     def test_bucket_ending_with_hyphen(self) -> None:
         """Reject 's3://bucket-/key' (bucket ends with hyphen)."""
         with pytest.raises(ValueError, match='Invalid S3 URI format'):
-            _validate_s3_uri_format('s3://bucket-/key')
+            validate_s3_uri_format('s3://bucket-/key')
 
     def test_valid_uri_accepted(self) -> None:
         """Valid S3 URI returns (bucket, key) tuple."""
-        bucket, key = _validate_s3_uri_format('s3://my-bucket/path/to/file.txt')
+        bucket, key = validate_s3_uri_format('s3://my-bucket/path/to/file.txt')
         assert bucket == 'my-bucket'
         assert key == 'path/to/file.txt'
 
