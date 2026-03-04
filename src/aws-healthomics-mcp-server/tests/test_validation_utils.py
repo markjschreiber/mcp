@@ -746,12 +746,13 @@ class TestWorkflowRepositoryIntegrationPropertyBased:
 
         mock_ctx = AsyncMock()
 
-        # Call validate_definition_sources with only definition_zip_base64
+        # Call validate_definition_sources with only definition_zip_base64 (deprecated alias)
         result = await validate_definition_sources(
             mock_ctx,
-            definition_zip_base64=definition_zip_base64,
+            definition_source=None,
             definition_uri=None,
             definition_repository=None,
+            definition_zip_base64=definition_zip_base64,
         )
 
         # Property: Returns a 3-tuple
@@ -797,7 +798,7 @@ class TestWorkflowRepositoryIntegrationPropertyBased:
         # Call validate_definition_sources with only definition_uri
         result = await validate_definition_sources(
             mock_ctx,
-            definition_zip_base64=None,
+            definition_source=None,
             definition_uri=s3_uri,
             definition_repository=None,
         )
@@ -1668,7 +1669,7 @@ class TestValidateDefinitionSourcesWithRepository:
 
         result = await validate_definition_sources(
             mock_ctx,
-            definition_zip_base64=None,
+            definition_source=None,
             definition_uri=None,
             definition_repository=definition_repository,
         )
@@ -1700,7 +1701,7 @@ class TestValidateDefinitionSourcesWithRepository:
 
         result = await validate_definition_sources(
             mock_ctx,
-            definition_zip_base64=None,
+            definition_source=None,
             definition_uri=None,
             definition_repository=definition_repository,
         )
