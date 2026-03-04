@@ -454,7 +454,7 @@ class TestInlineContentPassthrough:
     """
 
     @settings(max_examples=100)
-    @given(content=st.text(min_size=0, max_size=500))
+    @given(content=_non_s3_text)
     @pytest.mark.asyncio
     async def test_non_s3_non_file_passthrough(self, content: str) -> None:
         """Strings that are not S3 URIs and not existing paths pass through unchanged.
@@ -462,9 +462,7 @@ class TestInlineContentPassthrough:
         **Validates: Requirements Backward Compatibility,
         Lint Workflow Definition, Package Workflow**
         """
-        # Filter out S3 URIs and existing filesystem paths
-        if content.startswith('s3://') or os.path.exists(content):
-            pytest.skip('generated string is an S3 URI or existing path')
+        assume(not os.path.exists(content))
 
         resolved = await resolve_single_content(content, mode='text')
         assert resolved.content == content
