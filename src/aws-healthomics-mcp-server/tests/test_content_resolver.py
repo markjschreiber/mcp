@@ -319,8 +319,8 @@ class TestLocalFileContentRoundTrip:
             min_size=0,
             max_size=500,
             alphabet=st.characters(
-                blacklist_characters='\r',
-                blacklist_categories=('Cs',),
+                exclude_characters='\r',
+                exclude_categories=('Cs',),
             ),
         )
     )
@@ -484,8 +484,8 @@ _file_content = st.text(
     min_size=1,
     max_size=200,
     alphabet=st.characters(
-        blacklist_characters='\r',
-        blacklist_categories=('Cs',),  # exclude surrogates
+        exclude_characters='\r',
+        exclude_categories=('Cs',),  # exclude surrogates
     ),
 )
 

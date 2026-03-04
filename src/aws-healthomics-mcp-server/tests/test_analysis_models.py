@@ -242,9 +242,7 @@ class TestAnalysisModelsPropertyBased:
     task_name_strategy = st.text(
         min_size=1,
         max_size=100,
-        alphabet=st.characters(
-            whitelist_categories=('L', 'N', 'P', 'S'), whitelist_characters='-_.'
-        ),
+        alphabet=st.characters(categories=('L', 'N', 'P', 'S'), include_characters='-_.'),
     )
     arn_strategy = st.text(min_size=1, max_size=200)
     instance_type_strategy = st.sampled_from(

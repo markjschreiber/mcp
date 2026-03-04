@@ -704,7 +704,7 @@ valid_source_types = st.sampled_from(['COMMIT_ID', 'BRANCH', 'TAG'])
 valid_source_values = st.text(
     min_size=1,
     max_size=100,
-    alphabet=st.characters(whitelist_categories=('L', 'N'), whitelist_characters='-_./'),
+    alphabet=st.characters(categories=('L', 'N'), include_characters='-_./'),
 ).filter(lambda x: x.strip())
 
 # Valid base64 content generator

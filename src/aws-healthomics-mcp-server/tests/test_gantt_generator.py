@@ -43,9 +43,7 @@ def task_strategy(draw, base_time: datetime | None = None):
         st.text(
             min_size=1,
             max_size=50,
-            alphabet=st.characters(
-                whitelist_categories=('L', 'N', 'P', 'S'), blacklist_characters='<>&"\''
-            ),
+            alphabet=st.characters(categories=('L', 'N', 'P', 'S'), exclude_characters='<>&"\''),
         )
     )
 
