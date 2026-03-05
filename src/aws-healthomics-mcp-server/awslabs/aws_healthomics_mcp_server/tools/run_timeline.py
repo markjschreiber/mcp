@@ -60,8 +60,14 @@ async def generate_run_timeline(
         description='AWS region for pricing lookups. Defaults to us-east-1.',
     ),
     output_format: str = Field(
-        default='base64',
-        description='Output format for the SVG. Valid values: svg (raw SVG string), base64 (base64-encoded SVG for easier extraction). Defaults to base64.',
+        default='svg',
+        description=(
+            'Output format for the timeline. Valid values: svg (raw SVG string, default), '
+            'base64 (base64-encoded SVG, useful when transport safety is needed to avoid '
+            'XML/SVG markup mangling in JSON or other text protocols; note the output must '
+            'be base64-decoded before it can be rendered as SVG). Use svg when writing to a '
+            'local or s3 path. Defaults to svg.'
+        ),
     ),
     output_path: Optional[str] = Field(
         default=None,
