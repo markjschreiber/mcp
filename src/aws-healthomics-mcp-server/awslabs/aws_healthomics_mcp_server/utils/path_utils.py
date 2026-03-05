@@ -128,3 +128,30 @@ def write_svg_to_local(svg_content: str, path: str) -> str:
     resolved_path.write_text(svg_content, encoding='utf-8')
 
     return resolved
+
+
+def write_zip_to_local(zip_data: bytes, path: str) -> str:
+    """Sanitize path, ensure no overwrite, create parents, and write ZIP.
+
+    Args:
+        zip_data: The raw ZIP bytes to write.
+        path: The user-supplied local file path.
+
+    Returns:
+        The resolved absolute path where the file was written.
+
+    Raises:
+        ValueError: If path sanitization fails.
+        FileExistsError: If a file already exists at the path.
+        OSError: If the write fails (permissions, disk full, etc.).
+    """
+    resolved = sanitize_local_path(path)
+    resolved_path = Path(resolved)
+
+    if resolved_path.exists():
+        raise FileExistsError(f'File already exists: {resolved}')
+
+    resolved_path.parent.mkdir(parents=True, exist_ok=True)
+    resolved_path.write_bytes(zip_data)
+
+    return resolved

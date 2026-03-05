@@ -298,3 +298,54 @@ def write_svg_to_s3(
     )
 
     return s3_path
+
+
+def write_zip_to_s3(
+    zip_data: bytes,
+    s3_path: str,
+    expected_bucket_owner: Optional[str] = None,
+) -> str:
+    """Parse S3 path, validate bucket, check no-overwrite, and upload a ZIP archive.
+
+    Args:
+        zip_data: The raw ZIP bytes to upload.
+        s3_path: The S3 URI (s3://bucket/key).
+        expected_bucket_owner: AWS account ID for owner verification. None skips the check.
+
+    Returns:
+        The S3 URI where the object was written.
+
+    Raises:
+        ValueError: If path parsing or bucket validation fails.
+        FileExistsError: If an object already exists at the key.
+        ClientError: If the S3 upload fails.
+    """
+    bucket, key = validate_s3_uri_format(s3_path)
+
+    if not key:
+        raise ValueError(f'Invalid S3 URI format: {s3_path}. Missing object key')
+
+    session = get_aws_session()
+    s3_client = session.client('s3')
+
+    validate_s3_bucket_for_write(s3_client, bucket, expected_bucket_owner)
+
+    # Check that the object does not already exist (no-overwrite)
+    try:
+        s3_client.head_object(Bucket=bucket, Key=key)
+        raise FileExistsError(f'S3 object already exists: {s3_path}')
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code in ('404'):
+            pass
+        else:
+            raise
+
+    s3_client.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=zip_data,
+        ContentType='application/zip',
+    )
+
+    return s3_path

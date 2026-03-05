@@ -16,18 +16,27 @@
 
 import botocore
 import botocore.exceptions
+import json
 from awslabs.aws_healthomics_mcp_server.utils.aws_utils import (
     create_zip_file,
     encode_to_base64,
+    get_account_id,
     get_aws_session,
     get_omics_service_name,
 )
 from awslabs.aws_healthomics_mcp_server.utils.content_resolver import resolve_single_content
 from awslabs.aws_healthomics_mcp_server.utils.error_utils import handle_tool_error
+from awslabs.aws_healthomics_mcp_server.utils.path_utils import write_zip_to_local
+from awslabs.aws_healthomics_mcp_server.utils.s3_utils import write_zip_to_s3
+from botocore.exceptions import ClientError, NoCredentialsError
 from loguru import logger
 from mcp.server.fastmcp import Context
 from pydantic import Field
 from typing import Any, Dict, Optional, Union
+
+
+# Sentinel value for default bucket owner
+_SENTINEL_DEFAULT_OWNER = '__DEFAULT__'
 
 
 async def package_workflow(
@@ -44,6 +53,22 @@ async def package_workflow(
         None,
         description='Dictionary of additional files (filename: content). Values accept inline content, local file paths, or S3 URIs.',
     ),
+    output_path: Optional[str] = Field(
+        default=None,
+        description=(
+            'Optional file path or S3 URI (s3://bucket/key) where the ZIP output '
+            'will be written. When provided, the response contains only summary '
+            'metadata instead of the full base64-encoded ZIP content.'
+        ),
+    ),
+    expected_bucket_owner: Optional[str] = Field(
+        default=_SENTINEL_DEFAULT_OWNER,
+        description=(
+            'AWS account ID that must own the target S3 bucket. Defaults to the '
+            'current caller identity account ID. Set to None to skip bucket owner '
+            'verification. Only used when output_path is an S3 URI.'
+        ),
+    ),
 ) -> Union[str, Dict[str, Any]]:
     """Package workflow definition files into a base64-encoded ZIP.
 
@@ -54,9 +79,12 @@ async def package_workflow(
         main_file_name: Name of the main workflow file (default: main.wdl)
         additional_files: Dictionary of additional files (filename: content).
             Values accept inline content, local file paths, or S3 URIs.
+        output_path: Optional file path or S3 URI to write the ZIP to
+        expected_bucket_owner: AWS account ID for S3 bucket owner verification
 
     Returns:
-        Base64-encoded ZIP file containing the workflow definition, or error dict
+        Base64-encoded ZIP file containing the workflow definition,
+        or summary dict when output_path is provided, or error dict
     """
     try:
         try:
@@ -76,6 +104,37 @@ async def package_workflow(
 
         # Create ZIP file
         zip_data = create_zip_file(files)
+
+        # If output_path is provided, write ZIP to the specified destination
+        if output_path is not None:
+            try:
+                if output_path.startswith('s3://'):
+                    resolved_owner = expected_bucket_owner
+                    if resolved_owner == _SENTINEL_DEFAULT_OWNER:
+                        resolved_owner = get_account_id()
+                    result_path = write_zip_to_s3(zip_data, output_path, resolved_owner)
+                else:
+                    result_path = write_zip_to_local(zip_data, output_path)
+
+                return json.dumps(
+                    {
+                        'status': 'success',
+                        'output_path': result_path,
+                        'file_count': len(files),
+                        'files': list(files.keys()),
+                    }
+                )
+            except (
+                ValueError,
+                FileExistsError,
+                OSError,
+                ClientError,
+                NoCredentialsError,
+                PermissionError,
+            ) as e:
+                return json.dumps(
+                    await handle_tool_error(ctx, e, 'Error writing packaged workflow')
+                )
 
         # Encode to base64
         base64_data = encode_to_base64(zip_data)

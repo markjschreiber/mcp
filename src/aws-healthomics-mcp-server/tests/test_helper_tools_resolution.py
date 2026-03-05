@@ -58,6 +58,7 @@ class TestPackageWorkflowResolution:
             main_file_content=str(wdl_file),
             main_file_name='main.wdl',
             additional_files=None,
+            output_path=None,
         )
 
         assert isinstance(result, str)
@@ -89,6 +90,7 @@ class TestPackageWorkflowResolution:
                 main_file_content='s3://my-bucket/workflow.wdl',
                 main_file_name='main.wdl',
                 additional_files=None,
+                output_path=None,
             )
 
         assert isinstance(result, str)
@@ -108,6 +110,7 @@ class TestPackageWorkflowResolution:
             main_file_content=SAMPLE_WDL,
             main_file_name='main.wdl',
             additional_files=None,
+            output_path=None,
         )
 
         assert isinstance(result, str)
@@ -133,6 +136,7 @@ class TestPackageWorkflowResolution:
                 'tasks.wdl': str(tasks_file),
                 'inline.wdl': 'version 1.0\ntask I { }',
             },
+            output_path=None,
         )
 
         assert isinstance(result, str)
@@ -158,6 +162,7 @@ class TestPackageWorkflowResolution:
                 main_file_content='/no/such/file.wdl',
                 main_file_name='main.wdl',
                 additional_files=None,
+                output_path=None,
             )
 
         assert isinstance(result, dict)
@@ -200,6 +205,7 @@ class TestPackageWorkflowResolution:
                 main_file_content=SAMPLE_WDL,
                 main_file_name='main.wdl',
                 additional_files={'extra.wdl': '/missing.wdl'},
+                output_path=None,
             )
 
         assert isinstance(result, dict)
@@ -234,6 +240,7 @@ class TestPackageWorkflowResolution:
                     main_file_content=SAMPLE_WDL,
                     main_file_name='main.wdl',
                     additional_files=None,
+                    output_path=None,
                 )
 
         assert isinstance(result, dict)
