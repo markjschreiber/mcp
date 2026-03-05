@@ -1811,12 +1811,16 @@ class TestValidateDefinitionSources:
         class MockField:
             default = None
 
-        result = await validate_definition_sources(
-            mock_ctx,
-            definition_zip_base64='dGVzdA==',
-            definition_uri=cast(None, MockField()),
-            definition_repository=None,
-        )
+        with patch(
+            'awslabs.aws_healthomics_mcp_server.utils.validation_utils.resolve_single_content',
+        ) as mock_resolve:
+            mock_resolve.return_value = AsyncMock(content=b'zipdata')
+            result = await validate_definition_sources(
+                mock_ctx,
+                definition_source='dGVzdA==',
+                definition_uri=cast(None, MockField()),
+                definition_repository=None,
+            )
         assert result[0] is not None  # decoded zip bytes
         assert result[1] is None
         assert result[2] is None
@@ -1833,12 +1837,16 @@ class TestValidateDefinitionSources:
         class MockField:
             default = None
 
-        result = await validate_definition_sources(
-            mock_ctx,
-            definition_zip_base64='dGVzdA==',
-            definition_uri=None,
-            definition_repository=cast(None, MockField()),
-        )
+        with patch(
+            'awslabs.aws_healthomics_mcp_server.utils.validation_utils.resolve_single_content',
+        ) as mock_resolve:
+            mock_resolve.return_value = AsyncMock(content=b'zipdata')
+            result = await validate_definition_sources(
+                mock_ctx,
+                definition_source='dGVzdA==',
+                definition_uri=None,
+                definition_repository=cast(None, MockField()),
+            )
         assert result[0] is not None
         assert result[1] is None
         assert result[2] is None
@@ -1855,6 +1863,7 @@ class TestValidateDefinitionSources:
         with pytest.raises(ValueError, match='Cannot specify multiple definition sources'):
             await validate_definition_sources(
                 mock_ctx,
+                definition_source=None,
                 definition_zip_base64='dGVzdA==',
                 definition_uri='s3://bucket/key.zip',
                 definition_repository=None,
@@ -1873,6 +1882,7 @@ class TestValidateDefinitionSources:
         with pytest.raises(ValueError, match='Must specify one definition source'):
             await validate_definition_sources(
                 mock_ctx,
+                definition_source=None,
                 definition_zip_base64=None,
                 definition_uri=None,
                 definition_repository=None,
@@ -1881,7 +1891,7 @@ class TestValidateDefinitionSources:
 
     @pytest.mark.asyncio
     async def test_base64_decode_failure(self):
-        """Test error when base64 decoding fails."""
+        """Test error when resolving definition source fails."""
         from awslabs.aws_healthomics_mcp_server.utils.validation_utils import (
             validate_definition_sources,
         )
@@ -1889,13 +1899,13 @@ class TestValidateDefinitionSources:
         mock_ctx = AsyncMock()
 
         with patch(
-            'awslabs.aws_healthomics_mcp_server.utils.validation_utils.decode_from_base64',
-            side_effect=Exception('Invalid base64'),
+            'awslabs.aws_healthomics_mcp_server.utils.validation_utils.resolve_single_content',
+            side_effect=ValueError('Invalid content'),
         ):
-            with pytest.raises(Exception, match='Invalid base64'):
+            with pytest.raises(ValueError, match='Failed to resolve definition source'):
                 await validate_definition_sources(
                     mock_ctx,
-                    definition_zip_base64='not-valid-base64!!!',
+                    definition_source='not-valid-content!!!',
                     definition_uri=None,
                     definition_repository=None,
                 )
