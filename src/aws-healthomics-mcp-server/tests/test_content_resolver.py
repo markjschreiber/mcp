@@ -1381,3 +1381,35 @@ class TestCoverageGaps:
 
             with pytest.raises(ValueError, match='Content exceeds maximum size limit'):
                 _read_local_directory(tmp_dir, max_size_bytes=100)
+
+    @pytest.mark.asyncio
+    async def test_read_local_file_rejects_directory(self, tmp_path: Path) -> None:
+        """_read_local_file raises ValueError when path is a directory, not a regular file.
+
+        **Validates: Requirements Local File Content Resolution**
+        """
+        from awslabs.aws_healthomics_mcp_server.utils.content_resolver import (
+            _read_local_file,
+        )
+
+        dir_path = tmp_path / 'somedir'
+        dir_path.mkdir()
+
+        with pytest.raises(ValueError, match='Path is not a regular file'):
+            _read_local_file(str(dir_path), 'text', None)
+
+    @pytest.mark.asyncio
+    async def test_read_local_file_rejects_directory_binary_mode(self, tmp_path: Path) -> None:
+        """_read_local_file raises ValueError for directory in binary mode too.
+
+        **Validates: Requirements Local File Content Resolution**
+        """
+        from awslabs.aws_healthomics_mcp_server.utils.content_resolver import (
+            _read_local_file,
+        )
+
+        dir_path = tmp_path / 'bindir'
+        dir_path.mkdir()
+
+        with pytest.raises(ValueError, match='Path is not a regular file'):
+            _read_local_file(str(dir_path), 'binary', None)

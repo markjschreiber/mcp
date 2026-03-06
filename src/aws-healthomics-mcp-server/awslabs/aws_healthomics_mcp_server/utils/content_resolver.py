@@ -102,10 +102,10 @@ def detect_content_input_type(value: str) -> ContentInputType:
     if value.startswith('s3://'):
         return ContentInputType.S3_URI
 
-    # 2. Local file check (with path traversal guard)
+    # 2. Local file/directory check (with path traversal guard)
     try:
         validate_local_path(value)
-        if os.path.exists(value):
+        if os.path.isfile(value) or os.path.isdir(value):
             return ContentInputType.LOCAL_FILE
     except ValueError:
         logger.debug(f'Path traversal detected, treating as inline content: {value}')
@@ -134,6 +134,9 @@ def _read_local_file(path: str, mode: str, max_size_bytes: Optional[int]) -> Uni
 
     if not os.path.exists(path):
         raise FileNotFoundError(f'File not found: {path}')
+
+    if not os.path.isfile(path):
+        raise ValueError(f'Path is not a regular file: {path}')
 
     if not os.access(path, os.R_OK):
         raise PermissionError(f'Permission denied reading file: {path}')
