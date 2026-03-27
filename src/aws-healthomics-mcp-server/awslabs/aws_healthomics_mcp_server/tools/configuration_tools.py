@@ -44,7 +44,7 @@ async def create_configuration(
     ),
     run_configurations: Optional[Dict[str, Any]] = Field(
         None,
-        description='VPC config with securityGroupIds and subnetIds',
+        description='Run configuration settings (e.g. securityGroupIds and subnetIds)',
     ),
     description: Optional[str] = Field(
         None,
@@ -63,12 +63,12 @@ async def create_configuration(
         description='AWS region for this operation. Overrides the server default.',
     ),
 ) -> Dict[str, Any]:
-    """Create a new HealthOmics VPC configuration.
+    """Create a new HealthOmics configuration.
 
     Args:
         ctx: MCP context for error reporting
         name: Configuration name (max 50 characters)
-        run_configurations: Optional VPC config with securityGroupIds and subnetIds
+        run_configurations: Optional run configuration settings (e.g. securityGroupIds and subnetIds)
         description: Optional configuration description
         tags: Optional resource tags
         aws_profile: Optional AWS profile name override
@@ -143,7 +143,7 @@ async def get_configuration(
         description='AWS region for this operation. Overrides the server default.',
     ),
 ) -> Dict[str, Any]:
-    """Get details of a specific HealthOmics VPC configuration.
+    """Get details of a specific HealthOmics configuration.
 
     Args:
         ctx: MCP context for error reporting
@@ -194,7 +194,7 @@ async def list_configurations(
         description='AWS region for this operation. Overrides the server default.',
     ),
 ) -> Dict[str, Any]:
-    """List HealthOmics VPC configurations.
+    """List HealthOmics configurations.
 
     Args:
         ctx: MCP context for error reporting
@@ -253,7 +253,7 @@ async def delete_configuration(
         description='AWS region for this operation. Overrides the server default.',
     ),
 ) -> Dict[str, Any]:
-    """Delete a HealthOmics VPC configuration.
+    """Delete a HealthOmics configuration.
 
     Args:
         ctx: MCP context for error reporting

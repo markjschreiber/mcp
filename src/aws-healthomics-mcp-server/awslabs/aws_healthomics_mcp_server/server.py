@@ -226,10 +226,10 @@ This MCP server provides tools for creating, managing, and analyzing genomic wor
 - **ListAHOReferenceImportJobs**: List import jobs for a reference store
 
 ### Configuration Management
-- **CreateAHOConfiguration**: Create a new VPC configuration for HealthOmics workflow runs
-- **GetAHOConfiguration**: Get details about a specific VPC configuration
-- **ListAHOConfigurations**: List available VPC configurations
-- **DeleteAHOConfiguration**: Delete a VPC configuration
+- **CreateAHOConfiguration**: Create a new HealthOmics configuration for workflow runs
+- **GetAHOConfiguration**: Get details about a specific configuration
+- **ListAHOConfigurations**: List available configurations
+- **DeleteAHOConfiguration**: Delete a configuration
 
 ## Service Availability
 AWS HealthOmics is available in select AWS regions. Use the GetAHOSupportedRegions tool to get the current list of supported regions.
