@@ -14,6 +14,8 @@
 
 """awslabs aws-healthomics MCP Server implementation."""
 
+import sys
+from awslabs.aws_healthomics_mcp_server.config import TransportConfigError, parse_config
 from awslabs.aws_healthomics_mcp_server.tools.codeconnections import (
     create_codeconnection,
     get_codeconnection,
@@ -115,6 +117,7 @@ from awslabs.aws_healthomics_mcp_server.tools.workflow_management import (
     list_workflow_versions,
     list_workflows,
 )
+from awslabs.aws_healthomics_mcp_server.transport import TransportSelector
 from loguru import logger
 from mcp.server.fastmcp import FastMCP
 
@@ -348,10 +351,24 @@ mcp.tool(name='DeleteAHOConfiguration')(delete_configuration)
 
 
 def main():
-    """Run the MCP server with CLI argument support."""
+    """Run the MCP server with CLI argument support.
+
+    Parses and validates transport/network configuration from CLI flags and
+    environment variables, then starts the selected transport. On a configuration
+    error (unsupported transport, invalid host, or invalid port) a descriptive
+    message is logged and the process exits with a non-zero status without
+    starting any transport.
+    """
     logger.info('AWS HealthOmics MCP server starting')
 
-    mcp.run()
+    try:
+        config = parse_config()
+    except TransportConfigError as exc:
+        # Covers UnsupportedTransportError as well as invalid host/port errors.
+        logger.error(str(exc))
+        sys.exit(1)
+
+    TransportSelector.start(mcp, config)
 
 
 if __name__ == '__main__':

@@ -26,9 +26,10 @@ from awslabs.aws_healthomics_mcp_server.consts import (
     DEFAULT_OMICS_SERVICE_NAME,
     DEFAULT_REGION,
 )
+from dataclasses import dataclass
 from functools import lru_cache
 from loguru import logger
-from typing import Any, Dict
+from typing import Any, Dict, Protocol
 
 
 def get_region() -> str:
@@ -140,29 +141,114 @@ def get_aws_session(
     Raises:
         ImportError: If boto3 is not available
     """
-    # Handle FieldInfo objects from Pydantic (FastMCP compatibility)
-    if not isinstance(region_name, (str, type(None))):
-        region_name = None
-    if not isinstance(profile_name, (str, type(None))):
-        profile_name = None
+    # Delegate session construction to the active credential resolver (the seam).
+    # Absent region/profile are passed through unchanged so the resolver applies
+    # its own defaults (e.g. get_region() and the default credential chain).
+    return get_active_resolver().resolve(
+        CredentialRequest(region=region_name, profile=profile_name)
+    )
 
-    botocore_session = botocore.session.Session()
-    user_agent_extra = f'md/awslabs#mcp#aws-healthomics-mcp-server#{__version__}'
 
-    agent_value = get_agent_value()
-    if agent_value:
-        user_agent_extra += f' agent/{agent_value.lower()}'
+@dataclass(frozen=True)
+class CredentialRequest:
+    """Inputs to credential resolution.
 
-    botocore_session.user_agent_extra = user_agent_extra
+    Both fields are optional; resolvers apply their own defaults (e.g. the default
+    credential chain when ``profile`` is absent and ``get_region()`` when ``region``
+    is absent).
 
-    kwargs: dict[str, Any] = {
-        'region_name': region_name or get_region(),
-        'botocore_session': botocore_session,
-    }
-    if profile_name:
-        kwargs['profile_name'] = profile_name
+    Attributes:
+        region: Optional AWS region override.
+        profile: Optional AWS profile name override.
+    """
 
-    return boto3.Session(**kwargs)
+    region: str | None = None
+    profile: str | None = None
+
+
+class CredentialResolver(Protocol):
+    """Seam: produce a configured ``boto3.Session`` for a resolution request."""
+
+    def resolve(self, request: CredentialRequest) -> boto3.Session:
+        """Resolve a request into a configured ``boto3.Session``.
+
+        Args:
+            request: The credential resolution inputs (region/profile).
+
+        Returns:
+            boto3.Session: Configured AWS session.
+        """
+        ...
+
+
+class DefaultCredentialResolver:
+    """Phase 1 resolver that reproduces today's ``get_aws_session()`` behavior exactly.
+
+    Selects the default credential chain vs a named profile, resolves the region from
+    the request or ``get_region()``, and applies the identical ``user_agent_extra``
+    string (including the sanitized ``AGENT`` suffix). The existing Pydantic
+    ``FieldInfo`` defensive coercion (mapping non-``str``/non-``None`` values to
+    ``None``) is preserved so direct calls with unresolved ``FieldInfo`` defaults
+    behave as before.
+    """
+
+    def resolve(self, request: CredentialRequest) -> boto3.Session:
+        """Resolve a request into a configured ``boto3.Session``.
+
+        Args:
+            request: The credential resolution inputs (region/profile).
+
+        Returns:
+            boto3.Session: Configured AWS session.
+        """
+        region_name = request.region
+        profile_name = request.profile
+
+        # Handle FieldInfo objects from Pydantic (FastMCP compatibility)
+        if not isinstance(region_name, (str, type(None))):
+            region_name = None
+        if not isinstance(profile_name, (str, type(None))):
+            profile_name = None
+
+        botocore_session = botocore.session.Session()
+        user_agent_extra = f'md/awslabs#mcp#aws-healthomics-mcp-server#{__version__}'
+
+        agent_value = get_agent_value()
+        if agent_value:
+            user_agent_extra += f' agent/{agent_value.lower()}'
+
+        botocore_session.user_agent_extra = user_agent_extra
+
+        kwargs: dict[str, Any] = {
+            'region_name': region_name or get_region(),
+            'botocore_session': botocore_session,
+        }
+        if profile_name:
+            kwargs['profile_name'] = profile_name
+
+        return boto3.Session(**kwargs)
+
+
+_active_resolver: CredentialResolver = DefaultCredentialResolver()
+
+
+def get_active_resolver() -> CredentialResolver:
+    """Return the currently active credential resolver.
+
+    Returns:
+        CredentialResolver: The resolver used to produce ``boto3.Session`` instances.
+    """
+    return _active_resolver
+
+
+def set_active_resolver(resolver: CredentialResolver) -> None:
+    """Set the active credential resolver.
+
+    Args:
+        resolver: The resolver to install as the active credential resolver.
+    """
+    global _active_resolver
+    _active_resolver = resolver
 
 
 def create_zip_file(files: Dict[str, str]) -> bytes:

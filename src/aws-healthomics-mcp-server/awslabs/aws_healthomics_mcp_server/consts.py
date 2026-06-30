@@ -365,3 +365,34 @@ ERROR_CONFIGURATION_NAME_REQUIRES_VPC_MODE = (
 )
 ERROR_RESERVED_CONFIGURATION_NAME = "Configuration name '{}' is reserved and cannot be used"
 ERROR_CONFIGURATION_NAME_TOO_LONG = 'Configuration name exceeds maximum length of {} characters'
+
+# Transport selection (Phase 1)
+MCP_TRANSPORT_ENV = 'MCP_TRANSPORT'
+MCP_HOST_ENV = 'MCP_HOST'
+MCP_PORT_ENV = 'MCP_PORT'
+MCP_PATH_ENV = 'MCP_PATH'
+
+# Transport and network defaults (Phase 1)
+DEFAULT_TRANSPORT = 'stdio'
+DEFAULT_HTTP_HOST = '127.0.0.1'  # Loopback_Address
+DEFAULT_HTTP_PORT = 8000
+DEFAULT_HTTP_PATH = '/mcp'
+
+# Supported transports (Phase 1)
+SUPPORTED_TRANSPORTS = ('stdio', 'streamable-http', 'sse')
+NETWORK_TRANSPORTS = ('streamable-http', 'sse')
+
+# Error messages for transport and network configuration (Phase 1)
+ERROR_UNSUPPORTED_TRANSPORT = "Unsupported transport '{}'. Supported transports: {}"
+ERROR_INVALID_PORT = "Invalid port '{}'. Port must be an integer in the range 1-65535."
+ERROR_INVALID_HOST = "Invalid host '{}'. Must be a valid IPv4 address, IPv6 address, or hostname."
+
+# Warning emitted when binding a network transport to a non-loopback host (Phase 1).
+# Phase 1 performs no inbound authentication of its own; non-loopback exposure
+# requires an external fronting authentication layer.
+WARN_NON_LOOPBACK_EXPOSURE = (
+    "Binding network transport to non-loopback host '{}'. The server does not "
+    'perform inbound authentication; non-loopback exposure requires an external '
+    'fronting authentication layer (for example SigV4 via mcp-proxy-for-aws, a '
+    'reverse proxy, or an API gateway).'
+)

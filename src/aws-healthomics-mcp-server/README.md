@@ -589,6 +589,61 @@ The following IAM permissions are required:
 }
 ```
 
+## Remote Transport (HTTP/SSE)
+
+By default the server runs over **stdio**, which is ideal for local, single-user use with an MCP client. The server can also run as a network-accessible service over HTTP-based transports (`streamable-http` or `sse`) for hosted and remote scenarios.
+
+> **Security:** In this release the server performs **no inbound authentication** of its own. By default it binds only to the loopback address (`127.0.0.1`), so it is not reachable from the network. Exposing the server on a non-loopback address **requires** an external fronting authentication layer (see [Securing non-loopback exposure](#securing-non-loopback-exposure)). When a non-loopback host is configured, the server logs a warning at startup and still binds.
+
+### Transport selection
+
+The transport is selected with the `--transport` flag or the `MCP_TRANSPORT` environment variable. When both are supplied, the command-line flag wins. An unset, empty, or whitespace-only value selects `stdio`; any other unsupported value causes the server to log an error and exit without starting.
+
+| Transport mode | Flag | Environment variable | Start command |
+|----------------|------|----------------------|---------------|
+| `stdio` (default) | `--transport stdio` | `MCP_TRANSPORT=stdio` | `uv run -m awslabs.aws_healthomics_mcp_server.server` |
+| `streamable-http` | `--transport streamable-http` | `MCP_TRANSPORT=streamable-http` | `uv run -m awslabs.aws_healthomics_mcp_server.server --transport streamable-http --host 127.0.0.1 --port 8000 --path /mcp` |
+| `sse` | `--transport sse` | `MCP_TRANSPORT=sse` | `uv run -m awslabs.aws_healthomics_mcp_server.server --transport sse` |
+
+Each start command also has an environment-variable equivalent, for example:
+
+```bash
+# streamable-http via environment variables
+export MCP_TRANSPORT=streamable-http
+export MCP_HOST=127.0.0.1
+export MCP_PORT=8000
+export MCP_PATH=/mcp
+uv run -m awslabs.aws_healthomics_mcp_server.server
+
+# sse via environment variables
+MCP_TRANSPORT=sse uv run -m awslabs.aws_healthomics_mcp_server.server
+```
+
+### Network bind configuration
+
+When a network transport (`streamable-http` or `sse`) is selected, the bind address, port, and request path are configured with the following flags and environment variables. When both a flag and its environment variable are supplied, the command-line flag wins. These values are ignored when the transport is `stdio`.
+
+| Value | Flag | Environment variable | Default |
+|-------|------|----------------------|---------|
+| Host  | `--host` | `MCP_HOST` | `127.0.0.1` (loopback) |
+| Port  | `--port` | `MCP_PORT` | `8000` |
+| Path  | `--path` | `MCP_PATH` | `/mcp` |
+
+Validation:
+
+- The port must be an integer in the range `1`–`65535`. An invalid port causes the server to log an error and exit without binding.
+- The host must be a valid IPv4 address, IPv6 address, or syntactically valid hostname. An invalid host causes the server to log an error and exit without binding.
+
+### Securing non-loopback exposure
+
+The server does **not** perform inbound authentication. Binding to a non-loopback host (for example `0.0.0.0`) makes the endpoint reachable on the network with no built-in access control, so it **must** be placed behind an external fronting authentication layer. Concrete options include:
+
+- **SigV4 via [`mcp-proxy-for-aws`](https://github.com/awslabs/mcp-proxy-for-aws)** — front the server with a proxy that requires AWS Signature Version 4 signed requests, so only callers with valid AWS credentials reach the server.
+- **Reverse proxy** — terminate authentication at a reverse proxy (for example nginx or Envoy) that enforces mutual TLS, an auth subrequest, or token validation before forwarding to the loopback-bound server.
+- **API gateway** — place an API gateway (for example Amazon API Gateway) in front of the server to handle authentication and authorization, forwarding only authenticated requests.
+
+A typical secure deployment keeps the server bound to loopback inside its host or container network namespace and lets the fronting layer be the only network-reachable entry point.
+
 ## Usage with MCP Clients
 
 ### Kiro
@@ -755,6 +810,56 @@ uv run ruff check
 # Type checking
 uv run pyright
 ```
+
+## Running in a container
+
+The published image runs the server over **stdio** by default and binds nothing
+on the network, matching the local single-tenant behavior:
+
+```bash
+docker run -e AWS_REGION=us-east-1 aws-healthomics-mcp-server
+```
+
+### Running the container with a network transport
+
+A network transport (`streamable-http` or `sse`) can be started using only the
+documented environment variables — the image and its entry point do not need to
+change. The relevant variables and their defaults are:
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `MCP_TRANSPORT` | Transport mode: `stdio`, `streamable-http`, or `sse` | `stdio` |
+| `MCP_HOST` | Network bind address | `127.0.0.1` (loopback) |
+| `MCP_PORT` | Network bind port | `8000` |
+| `MCP_PATH` | Request path served | `/mcp` |
+
+To reach the server from outside the container you must do two things:
+
+1. Bind a non-loopback host inside the container (for example `MCP_HOST=0.0.0.0`).
+   The default `127.0.0.1` is only reachable from within the container.
+2. Publish the configured port to the host with `-p`/`--publish`.
+
+```bash
+docker run \
+  -e MCP_TRANSPORT=streamable-http \
+  -e MCP_HOST=0.0.0.0 \
+  -e MCP_PORT=8000 \
+  -p 8000:8000 \
+  -e AWS_REGION=us-east-1 \
+  aws-healthomics-mcp-server
+```
+
+For the SSE transport, set `MCP_TRANSPORT=sse` instead; `MCP_PATH` then controls
+the SSE request path.
+
+> **Security: non-loopback exposure requires a fronting auth layer.** Binding a
+> non-loopback host (such as `0.0.0.0`) exposes AWS access on the network. The
+> server performs **no inbound authentication of its own in Phase 1**, and it
+> logs a warning at startup when it binds a non-loopback host. You must place the
+> endpoint behind an external fronting authentication layer — for example SigV4
+> via `mcp-proxy-for-aws`, a reverse proxy, or an API gateway. See the
+> secure-by-default and fronting-authentication notes elsewhere in this README
+> for details.
 
 ## Contributing
 
