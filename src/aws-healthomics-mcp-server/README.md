@@ -644,6 +644,49 @@ The server does **not** perform inbound authentication. Binding to a non-loopbac
 
 A typical secure deployment keeps the server bound to loopback inside its host or container network namespace and lets the fronting layer be the only network-reachable entry point.
 
+## Multi-tenant mode (Phase 2)
+
+By default the server runs in **single-tenant mode**: one process identity (the default AWS credential chain, or a named `aws_profile`) serves every request. **Multi-tenant mode** lets a single network endpoint serve many caller identities by deriving AWS credentials **per inbound request** instead of once per process. Each request runs with credentials scoped to the caller that made it.
+
+> **Security:** Multi-tenant mode does not remove the need for a secured transport. The inbound identity mechanisms below either trust credential material forwarded by a fronting layer or decode (but do not cryptographically verify) bearer tokens. Multi-tenant mode **must** still be deployed behind an appropriately secured, trusted transport (TLS plus a fronting authentication layer). If no enabled mechanism can authenticate a request, the server rejects it with `401 Unauthorized` and makes no AWS call.
+
+### Enabling multi-tenant mode
+
+| Value | Flag | Environment variable | Default |
+|-------|------|----------------------|---------|
+| Multi-tenant | `--multi-tenant` | `MCP_MULTI_TENANT` | disabled |
+| Inbound mechanisms | `--inbound-auth` | `MCP_INBOUND_AUTH` | none |
+
+- Multi-tenant mode **requires a network transport** (`streamable-http` or `sse`); combining it with `stdio` causes the server to log an error and exit without starting.
+- `--multi-tenant` accepts case-insensitive enable values (`true`, `1`, `yes`, `on`, `enabled`) and disable values (`false`, `0`, `no`, `off`, `disabled`). When both the flag and environment variable are supplied, the command-line flag wins.
+- `--inbound-auth` takes a comma-separated subset of `sigv4`, `jwt`, `explicit` (for example `--inbound-auth sigv4,jwt`). At least one mechanism must be enabled; enabling multi-tenant mode with no mechanisms causes the server to exit at startup (it would otherwise reject every request).
+
+```bash
+# Multi-tenant streamable-http with SigV4 + JWT inbound mechanisms
+export MCP_TRANSPORT=streamable-http
+export MCP_MULTI_TENANT=true
+export MCP_INBOUND_AUTH=sigv4,jwt
+export MCP_JWT_ROLE_ARN=arn:aws:iam::123456789012:role/tenant-callers
+uv run -m awslabs.aws_healthomics_mcp_server.server
+```
+
+### Inbound identity mechanisms and trust models
+
+When more than one enabled mechanism can handle a request, exactly one is selected using the deterministic precedence order **`sigv4` > `jwt` > `explicit`**. Each mechanism assumes a trusted fronting layer / transport, as described below.
+
+- **`sigv4`** — The caller signs the request with their own AWS Signature Version 4 credentials. SigV4 proves possession of the secret key without transmitting it, so the server cannot recover a usable secret from the signature alone. This mechanism therefore expects a trusted fronting layer (for example [`mcp-proxy-for-aws`](https://github.com/awslabs/mcp-proxy-for-aws)) that validates the signature and forwards the caller's short-lived credentials on trusted headers (`X-Aho-Forwarded-Secret-Access-Key`, and `X-Aho-Forwarded-Session-Token` or `X-Amz-Security-Token`). The access key id parsed from the `Authorization` header becomes the per-caller cache identity. If the forwarded credential material is absent, the mechanism **fails closed** and no session is built.
+- **`jwt`** — A bearer/JWT token is exchanged server-side via AWS STS `AssumeRole` into a per-caller/per-tenant role (`MCP_JWT_ROLE_ARN`). The exchange runs with the **server's own** credentials, never the inbound token. The JWT **signature is not verified** by this server — it assumes a fronting layer (API gateway, load balancer, or hosting platform) has already authenticated the token; the server only decodes the claims to extract a caller identifier. That identifier is attached as an **ABAC session tag** (`caller=<sub>`) on the assumed-role session so the role's policies and CloudTrail can scope and attribute actions per caller. If the STS call fails, the request is rejected with `401` and no credential context is populated.
+- **`explicit`** — Short-lived AWS credentials are supplied directly in request headers (`X-Aws-Access-Key-Id`, `X-Aws-Secret-Access-Key`, and optionally `X-Aws-Session-Token`). These headers carry live credential material, so this mechanism **requires a trusted transport** and short-lived (STS session) credentials.
+
+Credential material (secret access keys, session tokens, bearer tokens) is **never logged** and never appears in error responses or the `401` body.
+
+### Per-request credential freshness and isolation
+
+- Credentials are derived **fresh for every request** from that request's inbound identity; no process-level or prior-request session is ever reused, so no separate credential-refresh mechanism is needed.
+- The `aws_profile` tool argument is **non-authoritative** in multi-tenant mode: identity comes solely from the request context, so a caller cannot select another tenant's identity by passing a profile. The `aws_region` argument is still honored (falling back to the configured default region).
+- Each request's credential context is installed before any tool runs and discarded when the request completes, so it is never visible to another request. Concurrent requests are isolated via `contextvars`.
+- Credential-derived caches (the AWS partition cache) are keyed by caller identity, so a value derived for one identity is never served to another. The partition cache is bounded to avoid unbounded memory growth across many caller identities.
+
 ## Usage with MCP Clients
 
 ### Kiro

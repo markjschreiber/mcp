@@ -57,7 +57,7 @@ class UnsupportedTransportError(TransportConfigError):
 
 @dataclass(frozen=True)
 class ServerConfig:
-    """Resolved server configuration for transport and network binding (Phase 1).
+    """Resolved server configuration for transport and network binding.
 
     Attributes:
         transport: One of the supported transport modes
@@ -65,12 +65,19 @@ class ServerConfig:
         host: Network bind address. Format validation is performed in a later task.
         port: Network bind port. Range validation is performed in a later task.
         path: Request path served for network transports.
+        multi_tenant: Whether request-scoped multi-tenant credential resolution is
+            enabled (Phase 2). Defaults to disabled (single-tenant mode).
+        inbound_mechanisms: The enabled inbound identity mechanisms (Phase 2), a
+            subset of ``{'sigv4', 'jwt', 'explicit'}`` ordered by
+            :data:`consts.INBOUND_PRECEDENCE`. Empty when none are selected.
     """
 
     transport: str
     host: str
     port: int
     path: str
+    multi_tenant: bool = False
+    inbound_mechanisms: tuple[str, ...] = ()
 
 
 def _resolve(cli_value: Optional[str], env_var: str) -> Optional[str]:
@@ -231,6 +238,83 @@ def _parse_port(raw: Optional[str]) -> int:
     return port
 
 
+# Recognized boolean values for the multi-tenant flag/env var. Parsing is
+# case-insensitive and trims surrounding whitespace before matching.
+_MULTI_TENANT_ENABLE_VALUES = ('true', '1', 'yes', 'on', 'enabled')
+_MULTI_TENANT_DISABLE_VALUES = ('false', '0', 'no', 'off', 'disabled')
+
+
+def _parse_multi_tenant(raw: Optional[str]) -> bool:
+    """Parse a raw multi-tenant configuration value into a boolean.
+
+    The value is matched case-insensitively after trimming surrounding
+    whitespace. Absent, empty, or whitespace-only values, as well as the
+    recognized disable values, yield ``False`` (single-tenant mode). The
+    recognized enable values yield ``True``.
+
+    Args:
+        raw: The raw value from CLI or environment, or ``None`` when absent.
+
+    Returns:
+        ``True`` when multi-tenant mode is enabled, ``False`` otherwise.
+
+    Raises:
+        TransportConfigError: If a supplied value is neither a recognized enable
+            nor disable value. The server does not start in this case.
+    """
+    if raw is None:
+        return False
+
+    trimmed = raw.strip().lower()
+    if trimmed == '':
+        return False
+    if trimmed in _MULTI_TENANT_ENABLE_VALUES:
+        return True
+    if trimmed in _MULTI_TENANT_DISABLE_VALUES:
+        return False
+
+    accepted = ', '.join(_MULTI_TENANT_ENABLE_VALUES + _MULTI_TENANT_DISABLE_VALUES)
+    raise TransportConfigError(consts.ERROR_INVALID_MULTI_TENANT_VALUE.format(raw, accepted))
+
+
+def _parse_inbound_mechanisms(raw: Optional[str]) -> tuple[str, ...]:
+    """Parse a raw inbound-auth value into an ordered tuple of mechanisms.
+
+    The value is a comma-separated list selecting a subset of
+    :data:`consts.INBOUND_MECHANISMS` (for example ``'sigv4,jwt'``). Tokens are
+    trimmed and matched case-insensitively; empty tokens are ignored. The result
+    is de-duplicated and ordered deterministically by
+    :data:`consts.INBOUND_PRECEDENCE`. An absent or empty value yields an empty
+    tuple.
+
+    Args:
+        raw: The raw value from CLI or environment, or ``None`` when absent.
+
+    Returns:
+        A tuple of the selected mechanisms ordered by ``INBOUND_PRECEDENCE``.
+
+    Raises:
+        TransportConfigError: If any token is not a recognized inbound mechanism.
+            The server does not start in this case.
+    """
+    if raw is None or raw.strip() == '':
+        return ()
+
+    selected: set[str] = set()
+    for token in raw.split(','):
+        mechanism = token.strip().lower()
+        if mechanism == '':
+            continue
+        if mechanism not in consts.INBOUND_MECHANISMS:
+            accepted = ', '.join(consts.INBOUND_MECHANISMS)
+            raise TransportConfigError(
+                consts.ERROR_INVALID_INBOUND_AUTH.format(token.strip(), accepted)
+            )
+        selected.add(mechanism)
+
+    return tuple(mechanism for mechanism in consts.INBOUND_PRECEDENCE if mechanism in selected)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """Build the argument parser for transport and network configuration flags."""
     parser = argparse.ArgumentParser(
@@ -279,6 +363,29 @@ def _build_parser() -> argparse.ArgumentParser:
             f'Overrides the {consts.MCP_PATH_ENV} environment variable.'
         ),
     )
+    parser.add_argument(
+        '--multi-tenant',
+        dest='multi_tenant',
+        default=None,
+        help=(
+            'Enable request-scoped multi-tenant credential resolution. Accepts '
+            f'enable values ({", ".join(_MULTI_TENANT_ENABLE_VALUES)}) or disable '
+            f'values ({", ".join(_MULTI_TENANT_DISABLE_VALUES)}); case-insensitive '
+            '(default: disabled). Requires a network transport (streamable-http '
+            f'or sse). Overrides the {consts.MCP_MULTI_TENANT_ENV} environment '
+            'variable.'
+        ),
+    )
+    parser.add_argument(
+        '--inbound-auth',
+        dest='inbound_auth',
+        default=None,
+        help=(
+            'Comma-separated subset of inbound identity mechanisms to enable '
+            f'({", ".join(consts.INBOUND_MECHANISMS)}), for example "sigv4,jwt". '
+            f'Overrides the {consts.MCP_INBOUND_AUTH_ENV} environment variable.'
+        ),
+    )
     return parser
 
 
@@ -297,9 +404,11 @@ def parse_config(argv: Optional[Sequence[str]] = None) -> ServerConfig:
 
     Raises:
         UnsupportedTransportError: If an unsupported transport value is supplied.
-        TransportConfigError: If, for a network transport, the supplied host is
-            not a valid IPv4/IPv6 address or hostname, or the supplied port is
-            not an integer in the range ``1..65535``.
+        TransportConfigError: If the supplied multi-tenant value is unrecognized,
+            an inbound-auth token is not a recognized mechanism, multi-tenant mode
+            is enabled together with the ``stdio`` transport, or, for a network
+            transport, the supplied host is not a valid IPv4/IPv6 address or
+            hostname or the supplied port is not an integer in ``1..65535``.
     """
     parser = _build_parser()
     args, _unknown = parser.parse_known_args(argv)
@@ -308,8 +417,17 @@ def parse_config(argv: Optional[Sequence[str]] = None) -> ServerConfig:
     raw_host = _resolve(args.host, consts.MCP_HOST_ENV)
     raw_port = _resolve(args.port, consts.MCP_PORT_ENV)
     raw_path = _resolve(args.path, consts.MCP_PATH_ENV)
+    raw_multi_tenant = _resolve(args.multi_tenant, consts.MCP_MULTI_TENANT_ENV)
+    raw_inbound_auth = _resolve(args.inbound_auth, consts.MCP_INBOUND_AUTH_ENV)
 
     transport = normalize_transport(raw_transport)
+    multi_tenant = _parse_multi_tenant(raw_multi_tenant)
+    inbound_mechanisms = _parse_inbound_mechanisms(raw_inbound_auth)
+
+    # Multi-tenant mode requires a network transport. Reject the stdio + multi-tenant
+    # combination before any transport starts so the server exits without serving.
+    if multi_tenant and transport not in consts.NETWORK_TRANSPORTS:
+        raise TransportConfigError(consts.ERROR_MULTI_TENANT_REQUIRES_NETWORK)
 
     # Host/port/path only apply to network transports. For stdio they are
     # ignored entirely: the resolved configuration uses network defaults so that
@@ -321,6 +439,8 @@ def parse_config(argv: Optional[Sequence[str]] = None) -> ServerConfig:
             host=consts.DEFAULT_HTTP_HOST,
             port=consts.DEFAULT_HTTP_PORT,
             path=consts.DEFAULT_HTTP_PATH,
+            multi_tenant=multi_tenant,
+            inbound_mechanisms=inbound_mechanisms,
         )
 
     host = _validate_host(raw_host)
@@ -329,4 +449,11 @@ def parse_config(argv: Optional[Sequence[str]] = None) -> ServerConfig:
         raw_path if raw_path is not None and raw_path.strip() != '' else consts.DEFAULT_HTTP_PATH
     )
 
-    return ServerConfig(transport=transport, host=host, port=port, path=path)
+    return ServerConfig(
+        transport=transport,
+        host=host,
+        port=port,
+        path=path,
+        multi_tenant=multi_tenant,
+        inbound_mechanisms=inbound_mechanisms,
+    )

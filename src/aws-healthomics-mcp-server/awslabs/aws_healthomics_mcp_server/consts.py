@@ -396,3 +396,36 @@ WARN_NON_LOOPBACK_EXPOSURE = (
     'fronting authentication layer (for example SigV4 via mcp-proxy-for-aws, a '
     'reverse proxy, or an API gateway).'
 )
+
+# Multi-tenant selection (Phase 2)
+MCP_MULTI_TENANT_ENV = 'MCP_MULTI_TENANT'
+MCP_INBOUND_AUTH_ENV = 'MCP_INBOUND_AUTH'
+
+# ARN of the role assumed by the inbound JWT-to-STS exchange mechanism (Phase 2).
+# Required only when the 'jwt' inbound mechanism is enabled; supplied via this
+# environment variable because the JWT exchange mechanism has no other source
+# for the target role ARN.
+MCP_JWT_ROLE_ARN_ENV = 'MCP_JWT_ROLE_ARN'
+
+# Inbound authentication mechanisms (Phase 2).
+# INBOUND_PRECEDENCE documents the deterministic order in which mechanisms apply.
+INBOUND_MECHANISMS = ('sigv4', 'jwt', 'explicit')
+INBOUND_PRECEDENCE = ('sigv4', 'jwt', 'explicit')
+
+# Error messages for multi-tenant configuration (Phase 2)
+ERROR_MULTI_TENANT_REQUIRES_NETWORK = (
+    'Multi-tenant mode is incompatible with the stdio transport. '
+    'Select a network transport (streamable-http or sse).'
+)
+ERROR_INVALID_MULTI_TENANT_VALUE = "Invalid multi-tenant value '{}'. Accepted values: {}"
+ERROR_INVALID_INBOUND_AUTH = "Invalid inbound authentication mechanism '{}'. Accepted values: {}"
+ERROR_MISSING_JWT_ROLE_ARN = (
+    "The 'jwt' inbound mechanism is enabled but no role ARN is configured. "
+    'Set the {} environment variable to the ARN of the role to assume.'
+)
+ERROR_MULTI_TENANT_REQUIRES_MECHANISM = (
+    'Multi-tenant mode is enabled but no inbound identity mechanisms are '
+    'configured. Select at least one mechanism ({}) via the --inbound-auth flag '
+    'or the {} environment variable; otherwise every inbound request would be '
+    'rejected.'
+)

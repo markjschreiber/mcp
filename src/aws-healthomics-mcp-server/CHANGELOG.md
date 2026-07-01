@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+  - **Remote Transport & Multi-Tenant Credential Resolution**: Added network transport selection and request-scoped, multi-tenant credential resolution
+    - **Phase 1 (transport + credential seam)**: Selectable transport (`stdio`, `streamable-http`, `sse`) via `--transport` / `MCP_TRANSPORT`, with network bind configuration (`--host`/`--port`/`--path` and `MCP_HOST`/`MCP_PORT`/`MCP_PATH`); secure-by-default loopback binding with a startup warning (and no inbound auth) for non-loopback exposure; and an internal `CredentialResolver` seam in `utils/aws_utils.py` routing every tool's `boto3.Session` through a single choke point with no behavior change by default
+    - **Phase 2 (multi-tenant)**: Opt-in multi-tenant mode via `--multi-tenant` / `MCP_MULTI_TENANT` (network transport only), selecting inbound identity mechanisms with `--inbound-auth` / `MCP_INBOUND_AUTH`. Three mechanisms with deterministic precedence (`sigv4` > `jwt` > `explicit`): forwarded-SigV4, JWT-to-STS exchange with ABAC session tags (`MCP_JWT_ROLE_ARN`), and explicit-credential headers. Credentials are derived fresh per request via an ASGI `IdentityMiddleware`, `aws_profile` is non-authoritative, partition caching is keyed and bounded per caller identity, and credential material is never logged
   - **Configuration Management Tools**: Added four new MCP tools for managing HealthOmics configurations
     - **CreateAHOConfiguration**: Create a new configuration with optional run settings, description, and tags
     - **GetAHOConfiguration**: Retrieve detailed configuration information including run settings and status
