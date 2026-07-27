@@ -122,6 +122,54 @@ def mock_environment():
             os.environ[key] = value
 
 
+# Deterministic stand-in price (USD per hour, or per GiB-hour for storage) used by
+# the ``stub_pricing_lookup`` fixture below.
+STUB_PRICE_PER_HOUR = 0.5
+
+
+@pytest.fixture
+def stub_pricing_lookup(monkeypatch):
+    """Stub the AWS Pricing API lookup so cost calculation stays offline and fast.
+
+    Any tool that computes cost (``generate_run_timeline``, the run-analysis
+    manifest parsers) calls ``CostAnalyzer``/``InstanceRecommender``, which reach
+    ``PricingCache.get_price`` -> ``_fetch_price_from_api`` and issue a **real** AWS
+    Pricing API request. The autouse ``mock_environment`` fixture supplies dummy
+    credentials, so credential resolution succeeds and the request proceeds to the
+    network instead of failing fast.
+
+    That is slow at best and effectively a hang at worst: ``get_price`` caches only
+    *successful* lookups, so a failed fetch is retried for every task -- and the
+    property-based timeline tests generate up to 500 tasks per example.
+
+    ``get_price`` is the single seam every network-bound pricing path funnels
+    through (``get_price_with_error``, ``CostAnalyzer.calculate_task_cost``,
+    ``CostAnalyzer.calculate_storage_cost``, and
+    ``InstanceRecommender.calculate_savings`` all delegate to it), so stubbing it
+    keeps the real cost arithmetic exercised while guaranteeing no AWS call leaves
+    the process, per the AWS-isolation rule in ``.kiro/steering/tech.md``.
+
+    This fixture is opt-in rather than autouse so tests that deliberately exercise
+    pricing behavior (``test_pricing_cache.py``, ``test_cost_analyzer.py``) keep
+    control of ``PricingCache``. Opt a module in with::
+
+        pytestmark = pytest.mark.usefixtures('stub_pricing_lookup')
+
+    The class-level price cache is cleared before and after each test so results
+    never depend on test ordering.
+    """
+    from awslabs.aws_healthomics_mcp_server.analysis.pricing_cache import PricingCache
+
+    PricingCache._cache.clear()
+    monkeypatch.setattr(
+        PricingCache,
+        'get_price',
+        classmethod(lambda cls, resource_type, region: STUB_PRICE_PER_HOUR),
+    )
+    yield
+    PricingCache._cache.clear()
+
+
 @pytest.fixture
 def sample_workflow_response():
     """Sample workflow response for testing."""
