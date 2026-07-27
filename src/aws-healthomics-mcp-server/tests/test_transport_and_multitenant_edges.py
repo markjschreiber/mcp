@@ -33,6 +33,7 @@ from awslabs.aws_healthomics_mcp_server.config import (
     _parse_multi_tenant,
 )
 from awslabs.aws_healthomics_mcp_server.transport import TransportSelector
+from pydantic import Field
 from unittest.mock import MagicMock, patch
 
 
@@ -64,9 +65,13 @@ class TestTransportSelectorNormalize:
 class TestTransportSelectorSelect:
     """Cover select() branches for None mode and valid mode."""
 
-    def test_select_none_transport_returns_default(self):
-        """Property: Unset transport resolves to the default stdio transport."""
-        config = ServerConfig(transport=None, host='127.0.0.1', port=8000, path='/mcp')
+    # ``ServerConfig.transport`` is typed ``str``, so an outright ``None`` cannot
+    # reach select() through a well-formed config. The empty and whitespace-only
+    # cases below exercise the same "normalizes to unset" branch in select(), and
+    # normalize(None) is covered directly above.
+    def test_select_empty_transport_returns_default(self):
+        """Property: Empty transport resolves to the default stdio transport."""
+        config = ServerConfig(transport='', host='127.0.0.1', port=8000, path='/mcp')
         assert TransportSelector.select(config) == consts.DEFAULT_TRANSPORT
 
     def test_select_whitespace_transport_returns_default(self):
@@ -95,13 +100,11 @@ class TestTransportSelectorSelect:
 class TestIsValidHostname:
     """Cover hostname validation edge cases: empty, too long, trailing dot only."""
 
+    # ``_is_valid_hostname`` is typed ``host: str``, so passing ``None`` is outside
+    # its contract. The empty-string case exercises the same falsy-host branch.
     def test_empty_hostname_is_invalid(self):
         """Property: Empty string is not a valid hostname."""
         assert _is_valid_hostname('') is False
-
-    def test_none_hostname_is_invalid(self):
-        """Property: None is not a valid hostname."""
-        assert _is_valid_hostname(None) is False
 
     def test_hostname_exceeding_max_length_is_invalid(self):
         """Property: Hostname longer than 253 characters is invalid."""
@@ -366,8 +369,9 @@ class TestDefaultCredentialResolverFieldInfoCoercion:
         )
 
         resolver = DefaultCredentialResolver()
-        # Pass an object (simulating FieldInfo) as region
-        request = CredentialRequest(region=object(), profile=None)
+        # An unresolved Pydantic FieldInfo default is exactly what FastMCP can hand a
+        # tool, and is what the defensive coercion in resolve() exists to absorb.
+        request = CredentialRequest(region=Field(default=None), profile=None)
         resolver.resolve(request)
 
         # Should use get_region() fallback since region was coerced to None
@@ -386,8 +390,9 @@ class TestDefaultCredentialResolverFieldInfoCoercion:
         )
 
         resolver = DefaultCredentialResolver()
-        # Pass an object (simulating FieldInfo) as profile
-        request = CredentialRequest(region='us-west-2', profile=object())
+        # An unresolved Pydantic FieldInfo default is exactly what FastMCP can hand a
+        # tool, and is what the defensive coercion in resolve() exists to absorb.
+        request = CredentialRequest(region='us-west-2', profile=Field(default=None))
         resolver.resolve(request)
 
         # Should not pass profile_name to Session kwargs
@@ -414,27 +419,26 @@ class TestPartitionCacheMultiTenant:
             _get_partition,
             _partition_cache,
             get_active_resolver,
+            reset_credential_context,
             set_active_resolver,
             set_credential_context,
         )
 
-        # Set up multi-tenant resolver
+        # MagicMock(spec=...) already reports the spec'd type from isinstance(), which
+        # is what _get_partition branches on.
         mock_resolver = MagicMock(spec=RequestScopedCredentialResolver)
-        mock_resolver.__class__ = RequestScopedCredentialResolver
 
         original_resolver = get_active_resolver()
+        ctx = CredentialContext(
+            access_key_id='AKIAIOSFODNN7EXAMPLE',
+            secret_access_key='wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',  # pragma: allowlist secret
+            session_token='token',
+            identity_key='test-identity',
+            source='explicit',
+        )
+        token = set_credential_context(ctx)
         try:
             set_active_resolver(mock_resolver)
-
-            # Set up a credential context
-            ctx = CredentialContext(
-                access_key_id='AKIAIOSFODNN7EXAMPLE',
-                secret_access_key='wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',  # pragma: allowlist secret
-                session_token='token',
-                identity_key='test-identity',
-                source='explicit',
-            )
-            set_credential_context(ctx)
 
             # Pre-populate the cache
             cache_key = ('test-identity', 'us-east-1')
@@ -448,7 +452,7 @@ class TestPartitionCacheMultiTenant:
             mock_resolver.resolve.assert_not_called()
         finally:
             set_active_resolver(original_resolver)
-            set_credential_context(None)
+            reset_credential_context(token)
             _partition_cache.clear()
 
     @patch(
@@ -459,24 +463,27 @@ class TestPartitionCacheMultiTenant:
         from awslabs.aws_healthomics_mcp_server.utils.aws_utils import (
             NoRequestIdentityError,
             RequestScopedCredentialResolver,
+            _credential_context,
             _get_partition,
             get_active_resolver,
             set_active_resolver,
-            set_credential_context,
         )
 
         mock_resolver = MagicMock(spec=RequestScopedCredentialResolver)
-        mock_resolver.__class__ = RequestScopedCredentialResolver
 
         original_resolver = get_active_resolver()
+        # The contextvar itself is typed ``CredentialContext | None``, so clearing it
+        # to None here is explicit about the "no identity resolved" precondition
+        # rather than relying on leftover state from an earlier test.
+        token = _credential_context.set(None)
         try:
             set_active_resolver(mock_resolver)
-            set_credential_context(None)
 
             with pytest.raises(NoRequestIdentityError):
                 _get_partition()
         finally:
             set_active_resolver(original_resolver)
+            _credential_context.reset(token)
 
 
 # ---------------------------------------------------------------------------
@@ -557,27 +564,26 @@ class TestGetDynamoDbClient:
             _get_partition,
             _partition_cache,
             get_active_resolver,
+            reset_credential_context,
             set_active_resolver,
             set_credential_context,
         )
 
         mock_resolver = MagicMock(spec=RequestScopedCredentialResolver)
-        mock_resolver.__class__ = RequestScopedCredentialResolver
         mock_session = MagicMock()
         mock_resolver.resolve.return_value = mock_session
 
         original_resolver = get_active_resolver()
+        ctx = CredentialContext(
+            access_key_id='AKIAIOSFODNN7EXAMPLE',
+            secret_access_key='wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',  # pragma: allowlist secret
+            session_token='token',
+            identity_key='cache-miss-identity',
+            source='jwt',
+        )
+        token = set_credential_context(ctx)
         try:
             set_active_resolver(mock_resolver)
-
-            ctx = CredentialContext(
-                access_key_id='AKIAIOSFODNN7EXAMPLE',
-                secret_access_key='wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',  # pragma: allowlist secret
-                session_token='token',
-                identity_key='cache-miss-identity',
-                source='jwt',
-            )
-            set_credential_context(ctx)
 
             # Ensure cache is empty for this key
             cache_key = ('cache-miss-identity', 'us-east-1')
@@ -592,7 +598,7 @@ class TestGetDynamoDbClient:
             assert _partition_cache[cache_key] == 'aws'
         finally:
             set_active_resolver(original_resolver)
-            set_credential_context(None)
+            reset_credential_context(token)
             _partition_cache.clear()
 
     @patch(
@@ -610,15 +616,23 @@ class TestGetDynamoDbClient:
             _get_partition,
             _partition_cache,
             get_active_resolver,
+            reset_credential_context,
             set_active_resolver,
             set_credential_context,
         )
 
         mock_resolver = MagicMock(spec=RequestScopedCredentialResolver)
-        mock_resolver.__class__ = RequestScopedCredentialResolver
         mock_resolver.resolve.return_value = MagicMock()
 
         original_resolver = get_active_resolver()
+        ctx = CredentialContext(
+            access_key_id='AKIAIOSFODNN7EXAMPLE',
+            secret_access_key='wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',  # pragma: allowlist secret
+            session_token='token',
+            identity_key='overflow-identity',
+            source='explicit',
+        )
+        token = set_credential_context(ctx)
         try:
             set_active_resolver(mock_resolver)
 
@@ -626,16 +640,6 @@ class TestGetDynamoDbClient:
             _partition_cache.clear()
             for i in range(_MAX_PARTITION_CACHE_ENTRIES):
                 _partition_cache[(f'identity-{i}', 'us-east-1')] = 'aws'
-
-            # Now add one more (triggers eviction)
-            ctx = CredentialContext(
-                access_key_id='AKIAIOSFODNN7EXAMPLE',
-                secret_access_key='wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',  # pragma: allowlist secret
-                session_token='token',
-                identity_key='overflow-identity',
-                source='explicit',
-            )
-            set_credential_context(ctx)
 
             _get_partition(region_name='us-east-1')
 
@@ -647,5 +651,5 @@ class TestGetDynamoDbClient:
             assert ('overflow-identity', 'us-east-1') in _partition_cache
         finally:
             set_active_resolver(original_resolver)
-            set_credential_context(None)
+            reset_credential_context(token)
             _partition_cache.clear()
