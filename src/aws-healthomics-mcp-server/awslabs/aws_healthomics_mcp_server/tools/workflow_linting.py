@@ -26,7 +26,7 @@ from awslabs.aws_healthomics_mcp_server.utils.error_utils import handle_tool_err
 from awslabs.aws_healthomics_mcp_server.vendor import wdl
 from awslabs.aws_healthomics_mcp_server.vendor.wdl import Lint as wdl_lint
 from loguru import logger
-from mcp.server.fastmcp import Context
+from mcp.server.mcpserver import Context
 from pathlib import Path
 from pydantic import Field
 from typing import Any, Dict, List, Optional, Tuple, Union
