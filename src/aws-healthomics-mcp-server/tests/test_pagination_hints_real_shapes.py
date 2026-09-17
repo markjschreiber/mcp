@@ -256,10 +256,11 @@ class TestDictNextTokenIdiomAgainstRealListRunsDateFilterTruncation:
         instruction = pagination['instruction'].lower()
         assert 'partial results' in instruction
         assert 'no further calls are needed' not in instruction
-        # Known quirk: the nested pagination idiom counts a 'results' key,
-        # which list_runs' response does not have (it uses 'runs'), so
-        # returnedCount reads 0 here instead of the true 10.
-        assert pagination['returnedCount'] == 0
+        # returnedCount must reflect the true number of runs actually
+        # returned (10, in result['runs']), not the 'results' key this
+        # idiom was originally written for -- list_runs' response uses
+        # 'runs', not 'results'.
+        assert pagination['returnedCount'] == 10
 
     @pytest.mark.asyncio
     async def test_boundary_exact_max_results_with_no_upstream_token_is_genuinely_complete(self):
