@@ -179,9 +179,42 @@ class GenomicsSearchOrchestrator:
             # Rank results by relevance score
             ranked_results = self.result_ranker.rank_results(scored_results)
 
+            # Resolve the effective offset: a continuation_token from a prior
+            # response takes precedence over a stale/default offset, since
+            # it is the cursor this method itself hands back (see below).
+            # Fall back to request.offset if the token isn't a valid offset
+            # (e.g. missing, or a token minted by search_paginated()'s
+            # different encoding).
+            effective_offset = request.offset
+            if request.continuation_token is not None:
+                try:
+                    parsed_offset = int(request.continuation_token)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        f'Invalid continuation_token {request.continuation_token!r} for '
+                        f'offset-based pagination, falling back to offset={request.offset}'
+                    )
+                else:
+                    if request.offset != 0 and request.offset != parsed_offset:
+                        logger.warning(
+                            f'Both offset={request.offset} and '
+                            f'continuation_token={request.continuation_token!r} were supplied; '
+                            f'continuation_token takes precedence for pagination.'
+                        )
+                    effective_offset = parsed_offset
+
+            # A continuation_token is caller-supplied and unvalidated (unlike
+            # the MCP tool's offset parameter, which enforces ge=0), so clamp
+            # it here -- otherwise pagination_info below would report an
+            # offset/next_offset/continuation_token inconsistent with the
+            # offset apply_pagination() actually clamps to internally.
+            if effective_offset < 0:
+                logger.warning(f'Invalid offset {effective_offset}, clamping to 0')
+                effective_offset = 0
+
             # Apply result limits and pagination
             limited_results = self.result_ranker.apply_pagination(
-                ranked_results, request.max_results, request.offset
+                ranked_results, request.max_results, effective_offset
             )
 
             # Get ranking statistics
@@ -191,15 +224,16 @@ class GenomicsSearchOrchestrator:
             search_duration_ms = int((time.time() - start_time) * 1000)
             storage_systems_searched = self._get_searched_storage_systems(request)
 
+            next_offset = effective_offset + len(limited_results)
+            has_more = next_offset < len(ranked_results)
+
             pagination_info = {
-                'offset': request.offset,
+                'offset': effective_offset,
                 'limit': request.max_results,
                 'total_available': len(ranked_results),
-                'has_more': (request.offset + len(limited_results)) < len(ranked_results),
-                'next_offset': request.offset + len(limited_results)
-                if (request.offset + len(limited_results)) < len(ranked_results)
-                else None,
-                'continuation_token': request.continuation_token,  # Pass through for now
+                'has_more': has_more,
+                'next_offset': next_offset if has_more else None,
+                'continuation_token': str(next_offset) if has_more else None,
             }
 
             response_dict = self.json_builder.build_search_response(
