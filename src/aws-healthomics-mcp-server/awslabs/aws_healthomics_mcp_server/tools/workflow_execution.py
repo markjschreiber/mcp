@@ -554,7 +554,7 @@ async def list_runs(
             # correct cursor: resuming with it fetches upstream pages after the
             # batches already scanned, so it skips the excess matches that were
             # already fetched into this batch but discarded here by truncation.
-            if len(filtered_runs) > max_results:
+            if len(filtered_runs) >= max_results:
                 if current_token:
                     result['nextToken'] = current_token
                     logger.info(
