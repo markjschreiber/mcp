@@ -151,9 +151,9 @@ class TestDictNextTokenIdiomAgainstRealListRunsDateFilterTruncation:
     """Wraps the real ``list_runs`` with a mocked ``get_omics_client``.
 
     Pins the two false-completeness cases in ListAHORuns' client-side
-    date-filter truncation path (see ``truthful-DECISIONS.md`` in this task's
-    evidence): the ``== max_results`` boundary, and the falsy-token case where
-    upstream is exhausted at the moment of truncation.
+    date-filter truncation path: the ``== max_results`` boundary, and the
+    falsy-token case where upstream is exhausted at the moment of
+    truncation.
     """
 
     def _run_items(self, count: int):
@@ -256,9 +256,9 @@ class TestDictNextTokenIdiomAgainstRealListRunsDateFilterTruncation:
         instruction = pagination['instruction'].lower()
         assert 'partial results' in instruction
         assert 'no further calls are needed' not in instruction
-        # Known quirk (see truthful-DECISIONS.md): the nested pagination idiom
-        # counts a 'results' key, which list_runs' response does not have (it
-        # uses 'runs'), so returnedCount reads 0 here instead of the true 10.
+        # Known quirk: the nested pagination idiom counts a 'results' key,
+        # which list_runs' response does not have (it uses 'runs'), so
+        # returnedCount reads 0 here instead of the true 10.
         assert pagination['returnedCount'] == 0
 
     @pytest.mark.asyncio
