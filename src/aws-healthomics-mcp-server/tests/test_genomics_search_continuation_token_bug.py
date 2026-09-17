@@ -39,6 +39,7 @@ from awslabs.aws_healthomics_mcp_server.models import (
     GenomicsFileResult,
     GenomicsFileSearchRequest,
     GenomicsFileType,
+    GlobalContinuationToken,
     SearchConfig,
 )
 from awslabs.aws_healthomics_mcp_server.search.genomics_search_orchestrator import (
@@ -332,3 +333,129 @@ class TestContinuationTokenEdgeCases:
         ]
         pagination = response.enhanced_response['pagination']
         assert pagination['offset'] == 2
+
+
+class TestPaginatedContinuationTokenEdgeCases:
+    """Sibling of TestContinuationTokenEdgeCases for search_paginated().
+
+    search_paginated() decodes continuation_token as a base64-JSON
+    GlobalContinuationToken (a different encoding from search()'s plain
+    offset integer), but shares the same failure mode this whole fix
+    targets: before this fix, a ValueError from GlobalContinuationToken.decode
+    was caught, logged server-side only via loguru, and silently replaced
+    with a fresh GlobalContinuationToken. The agent would see a normal,
+    successful-looking page 1 with has_more=True and no signal that its
+    supplied cursor was rejected -- it could iterate forever without
+    knowing. It must now raise the same actionable, agent-visible error as
+    search() does for its own unparseable-token case.
+    """
+
+    async def _run_paginated_search(self, orchestrator, five_ranked_results, request):
+        with patch.object(
+            orchestrator, '_execute_parallel_paginated_searches', new_callable=AsyncMock
+        ) as mock_execute:
+            mock_execute.return_value = (
+                [r.primary_file for r in five_ranked_results],
+                GlobalContinuationToken(),
+                len(five_ranked_results),
+            )
+            with patch.object(
+                orchestrator, '_score_results', new_callable=AsyncMock
+            ) as mock_score:
+                mock_score.return_value = five_ranked_results
+                return await orchestrator.search_paginated(request)
+
+    @pytest.mark.asyncio
+    async def test_unparseable_continuation_token_raises_actionable_error(
+        self, orchestrator, five_ranked_results
+    ):
+        """An unparseable continuation_token must raise a visible, actionable error.
+
+        Before this fix, GlobalContinuationToken.decode's ValueError was
+        caught, logged server-side only, and global_token silently reset to
+        a fresh GlobalContinuationToken -- indistinguishable from a real
+        first page. It must now raise instead of silently resetting.
+        """
+        request = GenomicsFileSearchRequest(
+            search_terms=['sample'],
+            max_results=2,
+            offset=0,
+            continuation_token='not-a-valid-token',
+            enable_storage_pagination=True,
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            await self._run_paginated_search(orchestrator, five_ranked_results, request)
+
+        message = str(exc_info.value)
+        assert 'not-a-valid-token' in message
+        assert 'invalid' in message.lower() or 'could not be parsed' in message.lower()
+        # Actionable: the agent must be told both a safe default (start over)
+        # and how to supply a token that will actually work.
+        assert 'no continuation_token' in message
+        assert 'pagination block' in message
+
+    @pytest.mark.asyncio
+    async def test_absent_continuation_token_still_starts_fresh_search(
+        self, orchestrator, five_ranked_results
+    ):
+        """continuation_token=None must still start a fresh paginated search.
+
+        This must not regress: an absent token is not an error.
+        """
+        request = GenomicsFileSearchRequest(
+            search_terms=['sample'],
+            max_results=2,
+            offset=0,
+            continuation_token=None,
+            enable_storage_pagination=True,
+        )
+
+        response = await self._run_paginated_search(orchestrator, five_ranked_results, request)
+
+        assert _paths(response) == [
+            's3://test-bucket/file0.fastq',
+            's3://test-bucket/file1.fastq',
+        ]
+
+    @pytest.mark.asyncio
+    async def test_valid_continuation_token_still_resumes(self, orchestrator, five_ranked_results):
+        """A valid continuation_token's behavior must not change at all."""
+        token = GlobalContinuationToken(
+            s3_tokens={'s3://test-bucket/': 'next-page-marker'},
+            page_number=1,
+            total_results_seen=2,
+        ).encode()
+        request = GenomicsFileSearchRequest(
+            search_terms=['sample'],
+            max_results=2,
+            offset=0,
+            continuation_token=token,
+            enable_storage_pagination=True,
+        )
+
+        with patch.object(
+            orchestrator, '_execute_parallel_paginated_searches', new_callable=AsyncMock
+        ) as mock_execute:
+            mock_execute.return_value = (
+                [r.primary_file for r in five_ranked_results[2:4]],
+                GlobalContinuationToken(),
+                2,
+            )
+            with patch.object(
+                orchestrator, '_score_results', new_callable=AsyncMock
+            ) as mock_score:
+                mock_score.return_value = five_ranked_results[2:4]
+                response = await orchestrator.search_paginated(request)
+
+            # The decoded token (s3_tokens, page_number, total_results_seen)
+            # must reach _execute_parallel_paginated_searches unchanged.
+            called_global_token = mock_execute.call_args[0][2]
+            assert called_global_token.s3_tokens == {'s3://test-bucket/': 'next-page-marker'}
+            assert called_global_token.page_number == 1
+            assert called_global_token.total_results_seen == 2
+
+        assert _paths(response) == [
+            's3://test-bucket/file2.fastq',
+            's3://test-bucket/file3.fastq',
+        ]

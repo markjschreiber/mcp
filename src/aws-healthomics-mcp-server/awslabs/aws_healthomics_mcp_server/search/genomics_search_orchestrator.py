@@ -54,11 +54,28 @@ from awslabs.aws_healthomics_mcp_server.utils.search_config import get_genomics_
 from loguru import logger
 
 # Import here to avoid circular imports
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, NoReturn, Optional, Set, Tuple
 
 
 if TYPE_CHECKING:
     from awslabs.aws_healthomics_mcp_server.search.s3_search_engine import S3SearchEngine
+
+
+def _raise_invalid_continuation_token_error(continuation_token: str) -> NoReturn:
+    """Raise an agent-visible, actionable error for an unparseable continuation_token.
+
+    Shared by search() and search_paginated(): both decode a caller-supplied
+    continuation_token and both must fail the same way when it can't be
+    parsed, rather than silently resetting to a fresh/default cursor -- a
+    silent reset looks like a normal first page and hides from the caller
+    that its cursor was rejected.
+    """
+    raise ValueError(
+        f'Invalid continuation_token {continuation_token!r}: it could not be parsed for '
+        'pagination. Call again with no continuation_token to start from the beginning, '
+        "or pass a continuation_token taken verbatim from a previous response's pagination "
+        'block.'
+    ) from None
 
 
 class GenomicsSearchOrchestrator:
@@ -163,12 +180,7 @@ class GenomicsSearchOrchestrator:
                 try:
                     parsed_offset = int(request.continuation_token)
                 except ValueError:
-                    raise ValueError(
-                        f'Invalid continuation_token {request.continuation_token!r}: it could '
-                        'not be parsed for pagination. Call again with no continuation_token to '
-                        'start from the beginning, or pass a continuation_token taken verbatim '
-                        "from a previous response's pagination block."
-                    ) from None
+                    _raise_invalid_continuation_token_error(request.continuation_token)
                 else:
                     if request.offset != 0 and request.offset != parsed_offset:
                         logger.warning(
@@ -303,14 +315,19 @@ class GenomicsSearchOrchestrator:
             # Validate search request
             self._validate_search_request(request)
 
-            # Parse global continuation token
+            # Parse global continuation token. An unparseable continuation_token
+            # (e.g. plain garbage, or a token minted by search()'s different
+            # offset-integer encoding) raises a visible error instead of
+            # silently resetting to a fresh GlobalContinuationToken -- a
+            # silent reset would look like a normal first page and hide from
+            # the caller that its cursor was rejected, letting it iterate
+            # forever without knowing.
             global_token = GlobalContinuationToken()
             if request.continuation_token:
                 try:
                     global_token = GlobalContinuationToken.decode(request.continuation_token)
-                except ValueError as e:
-                    logger.warning(f'Invalid continuation token, starting fresh search: {e}')
-                    global_token = GlobalContinuationToken()
+                except ValueError:
+                    _raise_invalid_continuation_token_error(request.continuation_token)
 
             # Create pagination metrics if enabled
             metrics = None
