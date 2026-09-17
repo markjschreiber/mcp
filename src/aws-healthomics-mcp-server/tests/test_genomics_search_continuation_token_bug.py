@@ -396,6 +396,37 @@ class TestPaginatedContinuationTokenEdgeCases:
         assert 'pagination block' in message
 
     @pytest.mark.asyncio
+    async def test_empty_string_continuation_token_raises_actionable_error(
+        self, orchestrator, five_ranked_results
+    ):
+        """continuation_token='' must raise, not silently start a fresh search.
+
+        The decode guard is `if request.continuation_token:` (truthiness),
+        so an empty string is falsy and skips the try/except entirely --
+        global_token stays a fresh GlobalContinuationToken with no error,
+        indistinguishable from a real first page. This is the exact same
+        silent-reset failure class the rest of this fix exists to
+        eliminate, just reachable via '' instead of garbage text.
+        GlobalContinuationToken.decode('') itself does raise ValueError
+        (confirmed directly), so this is purely the guard skipping the
+        decode call, not a decode gap.
+        """
+        request = GenomicsFileSearchRequest(
+            search_terms=['sample'],
+            max_results=2,
+            offset=0,
+            continuation_token='',
+            enable_storage_pagination=True,
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            await self._run_paginated_search(orchestrator, five_ranked_results, request)
+
+        message = str(exc_info.value)
+        assert 'no continuation_token' in message
+        assert 'pagination block' in message
+
+    @pytest.mark.asyncio
     async def test_absent_continuation_token_still_starts_fresh_search(
         self, orchestrator, five_ranked_results
     ):

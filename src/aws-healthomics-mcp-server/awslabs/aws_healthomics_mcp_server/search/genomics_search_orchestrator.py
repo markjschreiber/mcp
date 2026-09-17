@@ -323,7 +323,7 @@ class GenomicsSearchOrchestrator:
             # the caller that its cursor was rejected, letting it iterate
             # forever without knowing.
             global_token = GlobalContinuationToken()
-            if request.continuation_token:
+            if request.continuation_token is not None:
                 try:
                     global_token = GlobalContinuationToken.decode(request.continuation_token)
                 except ValueError:
