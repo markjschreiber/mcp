@@ -562,7 +562,13 @@ async def list_runs(
                         f'truncated to {max_results}. Returning upstream nextToken so '
                         'the caller can continue pagination.'
                     )
-                else:
+                elif len(filtered_runs) > max_results:
+                    # Matching runs were discarded by the max_results slice above and
+                    # upstream is exhausted, so there is no token to hand back at all.
+                    # Raise the pagination.has_more flag the wrapper's nested-pagination
+                    # idiom already recognizes, so it reports this page as incomplete
+                    # instead of fabricating a COMPLETE result.
+                    result['pagination'] = {'has_more': True}
                     logger.info(
                         f'Client-side filtering returned {len(filtered_runs)} results, '
                         f'truncated to {max_results}. No further upstream pages are '

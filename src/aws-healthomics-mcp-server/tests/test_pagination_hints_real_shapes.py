@@ -213,6 +213,55 @@ class TestDictNextTokenIdiomAgainstRealListRunsDateFilterTruncation:
         assert 'no further calls are needed' not in pagination['instruction'].lower()
 
     @pytest.mark.asyncio
+    async def test_truncation_with_no_upstream_token_reports_partial_not_complete(self):
+        """Filtered set > max_results but upstream is exhausted (no current_token).
+
+        Matching runs were discarded by the max_results slice and there is no
+        token to hand back. Before the fix, list_runs emitted nothing extra,
+        so the wrapper's dict/nextToken branch saw no token key and reported
+        the page as COMPLETE -- fabricating certainty that no runs were
+        dropped. The fix raises the pagination.has_more flag pagination.py's
+        nested idiom already recognizes, routing into its honest
+        is_complete=False / token=None path instead.
+        """
+        # No nextToken: upstream is exhausted on this single batch.
+        mock_response = {'items': self._run_items(15)}
+
+        mock_ctx = AsyncMock()
+        mock_client = MagicMock()
+        mock_client.list_runs.return_value = mock_response
+
+        wrapped = paginating('ListAHORuns', list_runs)
+
+        with patch(
+            'awslabs.aws_healthomics_mcp_server.tools.workflow_execution.get_omics_client',
+            return_value=mock_client,
+        ):
+            result = await wrapped(
+                ctx=mock_ctx,
+                max_results=10,
+                next_token=None,
+                status=None,
+                created_after='2023-06-10T00:00:00Z',
+                created_before=None,
+                run_group_id=None,
+            )
+
+        assert len(result['runs']) == 10
+        assert 'nextToken' not in result
+
+        pagination = result['pagination']
+        assert pagination['isComplete'] is False
+        assert 'nextToken' not in pagination
+        instruction = pagination['instruction'].lower()
+        assert 'partial results' in instruction
+        assert 'no further calls are needed' not in instruction
+        # Known quirk (see truthful-DECISIONS.md): the nested pagination idiom
+        # counts a 'results' key, which list_runs' response does not have (it
+        # uses 'runs'), so returnedCount reads 0 here instead of the true 10.
+        assert pagination['returnedCount'] == 0
+
+    @pytest.mark.asyncio
     async def test_boundary_exact_max_results_with_no_upstream_token_is_genuinely_complete(self):
         """Filtered set == max_results and upstream is exhausted (no current_token).
 
