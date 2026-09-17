@@ -274,3 +274,61 @@ class TestContinuationTokenEdgeCases:
         assert any(
             'offset=3' in call and 'continuation_token' in call for call in warning_calls
         ), f'expected a warning that the explicit offset was overridden, got: {warning_calls}'
+
+    @pytest.mark.asyncio
+    async def test_unparseable_continuation_token_raises_actionable_error(
+        self, orchestrator, five_ranked_results
+    ):
+        """An unparseable continuation_token must raise a visible, actionable error.
+
+        Before this fix, `int(token)` raising ValueError was caught, logged
+        server-side only (via loguru, never reaching the MCP response), and
+        effective_offset silently fell back to request.offset. The agent
+        would see a normal, successful-looking page 1 with no signal that
+        its supplied cursor was rejected -- the same "confident wrong
+        instruction" failure class this whole fix exists to eliminate, just
+        reachable via a garbage/foreign token instead of the original echo
+        bug. It must now raise instead of silently falling back.
+        """
+        request = GenomicsFileSearchRequest(
+            search_terms=['sample'],
+            max_results=2,
+            offset=0,
+            continuation_token='not-a-valid-token',
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            await self._run_search(orchestrator, five_ranked_results, request)
+
+        message = str(exc_info.value)
+        assert 'not-a-valid-token' in message
+        assert 'invalid' in message.lower() or 'could not be parsed' in message.lower()
+        # Actionable: the agent must be told both a safe default (start over)
+        # and how to supply a token that will actually work.
+        assert 'no continuation_token' in message
+        assert 'pagination block' in message
+
+    @pytest.mark.asyncio
+    async def test_absent_continuation_token_still_starts_from_request_offset(
+        self, orchestrator, five_ranked_results
+    ):
+        """continuation_token=None must keep meaning 'use request.offset as-is'.
+
+        This must not regress: an absent token is not an error, and offset
+        alone (no token at all) must still page normally.
+        """
+        request = GenomicsFileSearchRequest(
+            search_terms=['sample'],
+            max_results=2,
+            offset=2,
+            continuation_token=None,
+        )
+
+        response = await self._run_search(orchestrator, five_ranked_results, request)
+
+        assert _paths(response) == [
+            's3://test-bucket/file2.fastq',
+            's3://test-bucket/file3.fastq',
+        ]
+        pagination = response.enhanced_response['pagination']
+        assert pagination['offset'] == 2

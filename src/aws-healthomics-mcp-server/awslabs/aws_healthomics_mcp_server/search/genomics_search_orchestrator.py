@@ -152,18 +152,23 @@ class GenomicsSearchOrchestrator:
             # search/score/rank pipeline runs): a continuation_token from a
             # prior response takes precedence over a stale/default offset,
             # since it is the cursor this method itself hands back (see
-            # pagination_info below). Fall back to request.offset if the
-            # token isn't a valid offset (e.g. missing, or a token minted by
-            # search_paginated()'s different encoding).
+            # pagination_info below). An unparseable continuation_token
+            # (e.g. a base64 token minted by search_paginated()'s different
+            # encoding, or plain garbage) raises a visible error instead of
+            # silently resetting to offset -- a silent reset would look like
+            # a normal first page and hide from the caller that its cursor
+            # was rejected.
             effective_offset = request.offset
             if request.continuation_token is not None:
                 try:
                     parsed_offset = int(request.continuation_token)
                 except ValueError:
-                    logger.warning(
-                        f'Invalid continuation_token {request.continuation_token!r} for '
-                        f'offset-based pagination, falling back to offset={request.offset}'
-                    )
+                    raise ValueError(
+                        f'Invalid continuation_token {request.continuation_token!r}: it could '
+                        'not be parsed for pagination. Call again with no continuation_token to '
+                        'start from the beginning, or pass a continuation_token taken verbatim '
+                        "from a previous response's pagination block."
+                    ) from None
                 else:
                     if request.offset != 0 and request.offset != parsed_offset:
                         logger.warning(
